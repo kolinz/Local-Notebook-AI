@@ -105,11 +105,8 @@ ollama pull nomic-embed-text
 ### 4. データベースのセットアップ
 
 ```bash
-cd apps/api
-pnpm db:generate
 pnpm db:migrate
 pnpm db:seed
-cd ../..
 ```
 
 - `db:generate`：`schema.ts` の内容からマイグレーションSQLを生成します
