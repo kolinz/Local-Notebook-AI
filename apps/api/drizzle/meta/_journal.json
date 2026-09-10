@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1788794700304,
+      "tag": "0000_first_layla_miller",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788800394528,
+      "tag": "0001_small_gressill",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788933387410,
+      "tag": "0002_mute_squadron_sinister",
+      "breakpoints": true
+    }
+  ]
+}

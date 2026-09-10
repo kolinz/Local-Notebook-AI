@@ -1,0 +1,12 @@
+{
+  "name": "@local-notebook-ai/rag-core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "RagStrategy interface and future implementations (Standard RAG, HyDE RAG).",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "lint": "echo \"[rag-core] no lint configured yet\"",
+    "test": "echo \"[rag-core] no tests yet\""
+  }
+}

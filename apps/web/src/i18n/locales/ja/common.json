@@ -1,0 +1,14 @@
+{
+  "appName": "Local Notebook AI",
+  "signIn": "サインイン",
+  "signOut": "サインアウト",
+  "signedInAs": "{{name}} としてサインイン中",
+  "roleAdmin": "管理者",
+  "roleUser": "一般ユーザー",
+  "connectionUnreachable": "サーバーに接続できません…",
+  "loading": "読み込み中…",
+  "save": "保存",
+  "cancel": "キャンセル",
+  "myNotebooks": "マイノートブック",
+  "admin": "管理者"
+}

@@ -1,0 +1,12 @@
+{
+  "name": "@local-notebook-ai/storage",
+  "version": "0.1.0",
+  "private": true,
+  "description": "StorageAdapter interface and future implementations (Local, S3, MinIO, IBM COS).",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "lint": "echo \"[storage] no lint configured yet\"",
+    "test": "echo \"[storage] no tests yet\""
+  }
+}

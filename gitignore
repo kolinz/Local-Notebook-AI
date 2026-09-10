@@ -1,0 +1,40 @@
+# dependencies
+node_modules/
+**/node_modules/
+
+# build output
+apps/web/.next/
+apps/web/out/
+apps/api/dist/
+packages/*/dist/
+
+# env
+.env
+.env.local
+.env.*.local
+
+# data / storage (will hold real user data from later phases)
+data/*.sqlite
+data/*.sqlite-journal
+data/*.sqlite-wal
+data/*.sqlite-shm
+storage/uploads/*
+!storage/uploads/.gitkeep
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# misc
+coverage/
+*.tsbuildinfo

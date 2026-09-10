@@ -1,0 +1,23 @@
+{
+  "name": "local-notebook-ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local Notebook AI - self-hosted, multi-user, NotebookLM-style RAG web application backed by Ollama.",
+  "engines": {
+    "node": ">=24 <25",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "concurrently -n web,api -c blue,green \"pnpm --filter web dev\" \"pnpm --filter api start:dev\"",
+    "build": "pnpm --filter api build && pnpm --filter web build",
+    "start": "concurrently -n api,web -c green,blue \"pnpm --filter api start:prod\" \"pnpm --filter web start\"",
+    "lint": "pnpm --recursive lint",
+    "test": "pnpm --recursive test",
+    "db:migrate": "pnpm --filter api db:migrate",
+    "db:seed": "pnpm --filter api db:seed"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

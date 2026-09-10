@@ -1,0 +1,14 @@
+{
+  "appName": "Local Notebook AI",
+  "signIn": "Sign in",
+  "signOut": "Sign out",
+  "signedInAs": "Signed in as {{name}}",
+  "roleAdmin": "Admin",
+  "roleUser": "User",
+  "connectionUnreachable": "Can't reach the server…",
+  "loading": "Loading…",
+  "save": "Save",
+  "cancel": "Cancel",
+  "myNotebooks": "My Notebooks",
+  "admin": "Admin"
+}

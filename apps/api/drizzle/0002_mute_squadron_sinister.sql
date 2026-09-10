@@ -1,0 +1,1 @@
+ALTER TABLE `models` ADD `is_default_hyde` integer DEFAULT false NOT NULL;
