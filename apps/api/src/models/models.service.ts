@@ -48,7 +48,8 @@ export class ModelsService {
    * Resolves which Ollama model name to use for generation (chat
    * completion / RAG answer synthesis): prefers the admin-configured
    * default generation model (`models.is_default_generation`, set via
-   * `PUT /api/admin/ollama/settings`), falling back to
+   * `PUT /api/admin/ollama/settings`, or auto-applied by
+   * `applyEnvDefaultsIfUnset` below), falling back to
    * `DEFAULT_GENERATION_MODEL` from `.env` when none is configured yet.
    * Mirrors `EmbeddingModelResolver`'s resolution logic (Phase 10) for
    * the generation side, used by `RagService` (Phase 11).
@@ -75,6 +76,14 @@ export class ModelsService {
    * `models` table (matched by name). Existing rows keep their
    * `is_enabled` / `is_default_*` flags untouched — only `model_type`
    * and `updated_at` are refreshed for models that already exist.
+   *
+   * After upserting, `applyEnvDefaultsIfUnset()` runs so that a fresh
+   * (or previously un-configured) install's `.env`-declared defaults
+   * actually show up as checked in the admin UI, instead of only being
+   * honored silently at generation/embedding call time via
+   * `resolveDefaultGenerationModel()`'s fallback — this was the actual
+   * bug Kohei reported: the admin screen never reflected `.env` even
+   * though generation itself was already using it correctly.
    *
    * Propagates any error from `OllamaService` (e.g. Ollama unreachable)
    * — the caller (OllamaAdminController) surfaces that as a 502-style
@@ -111,7 +120,64 @@ export class ModelsService {
       }
     }
 
+    this.applyEnvDefaultsIfUnset();
+
     return { added, updated, total: available.length };
+  }
+
+  /**
+   * One-time-per-slot bootstrap: if NO model is currently flagged as
+   * the default generation model, and some synced model's name exactly
+   * matches `.env`'s `DEFAULT_GENERATION_MODEL`, flag that one. Same
+   * for embedding / `DEFAULT_EMBEDDING_MODEL`. Runs after every sync,
+   * but is a no-op the moment any model holds the flag — so it never
+   * overrides an admin's explicit choice (via
+   * `setDefaultGeneration`/`setDefaultEmbedding`), it only fills in the
+   * gap before an admin has made one. There's no HyDE equivalent
+   * on purpose: `.env` has no `DEFAULT_HYDE_MODEL`-style variable (see
+   * `.env.example`), so `isDefaultHyde` stays admin-only, as designed
+   * in Phase 9.
+   */
+  private applyEnvDefaultsIfUnset(): void {
+    const hasDefaultGeneration = this.db
+      .select({ id: models.id })
+      .from(models)
+      .where(eq(models.isDefaultGeneration, true))
+      .get();
+    if (!hasDefaultGeneration) {
+      const match = this.db
+        .select({ id: models.id })
+        .from(models)
+        .where(eq(models.name, this.appConfig.config.ollama.defaultGenerationModel))
+        .get();
+      if (match) {
+        this.db
+          .update(models)
+          .set({ isDefaultGeneration: true, updatedAt: new Date() })
+          .where(eq(models.id, match.id))
+          .run();
+      }
+    }
+
+    const hasDefaultEmbedding = this.db
+      .select({ id: models.id })
+      .from(models)
+      .where(eq(models.isDefaultEmbedding, true))
+      .get();
+    if (!hasDefaultEmbedding) {
+      const match = this.db
+        .select({ id: models.id })
+        .from(models)
+        .where(eq(models.name, this.appConfig.config.ollama.defaultEmbeddingModel))
+        .get();
+      if (match) {
+        this.db
+          .update(models)
+          .set({ isDefaultEmbedding: true, updatedAt: new Date() })
+          .where(eq(models.id, match.id))
+          .run();
+      }
+    }
   }
 
   /** Unsets the flag on every other row first, so at most one model is ever the default generation model. */

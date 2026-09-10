@@ -251,9 +251,28 @@ export interface FileRecord {
   sizeBytes: number;
   status: string;
   sha256: string;
+  /** File summary feature — all null/false until the "Summary" button has been used at least once. */
+  summaryText: string | null;
+  summaryGeneratedAt: string | null;
+  summaryModel: string | null;
+  summaryTruncated: boolean;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
+}
+
+/**
+ * (File summary feature.) Generates — or, on a later call, regenerates
+ * — the cached summary for a file, from its already-extracted chunks
+ * (never the raw original bytes). Returns the full updated file record,
+ * so the caller can read `summaryText` straight off it without a
+ * separate fetch. Can throw a 502 `ApiError` if Ollama itself failed —
+ * callers should show that as an error, never fall back to a fabricated
+ * summary.
+ */
+export async function generateFileSummary(fileId: string): Promise<FileRecord> {
+  const data = await apiFetch<{ file: FileRecord }>(`/api/files/${fileId}/summary`, { method: "POST" });
+  return data.file;
 }
 
 /** Lists only non-deleted files for the given notebook. */

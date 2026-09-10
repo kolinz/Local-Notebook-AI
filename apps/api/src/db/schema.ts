@@ -25,6 +25,18 @@
  *   integer 0/1 (`{ mode: "boolean" }`) and timestamps as integer unix
  *   seconds (`{ mode: "timestamp" }`), both handled transparently by
  *   drizzle-orm.
+ *
+ * File summary feature: `files.summary_text` / `summary_generated_at` /
+ * `summary_model` / `summary_truncated` were not in the original SDD
+ * section 11.3 column list (predates this feature) — added the same
+ * way `models.is_default_hyde` was added in Phase 9: as nullable
+ * additive columns, so no backfill/migration of existing rows is
+ * needed (NULL simply means "no summary generated yet").
+ * `summary_model` stores the Ollama model NAME string returned by
+ * `ModelsService.resolveDefaultGenerationModel()` (the same value
+ * `AnswerGenerator` passes to `OllamaService.generateCompletion`) —
+ * not a foreign key to `models.id` — since that's the only identifier
+ * actually available at the call site.
  */
 
 import { sql } from "drizzle-orm";
@@ -141,6 +153,16 @@ export const files = sqliteTable(
     /** uploaded | extracting | chunking | embedding | ready | failed | deleted */
     status: text("status").notNull().default("uploaded"),
     sha256: text("sha256").notNull(),
+    /**
+     * File summary feature. All four columns are nullable/default-false
+     * so existing rows need no backfill — NULL/false simply means "no
+     * summary generated yet". See the file header note above for why
+     * `summaryModel` is a plain name string rather than a foreign key.
+     */
+    summaryText: text("summary_text"),
+    summaryGeneratedAt: integer("summary_generated_at", { mode: "timestamp" }),
+    summaryModel: text("summary_model"),
+    summaryTruncated: integer("summary_truncated", { mode: "boolean" }).notNull().default(false),
     createdAt: createdAtColumn(),
     updatedAt: updatedAtColumn(),
     deletedAt: integer("deleted_at", { mode: "timestamp" }),

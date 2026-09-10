@@ -1,458 +1,271 @@
 # Local Notebook AI
 
-自治体・大学・研究室・企業内など、**組織内の複数ユーザーが利用する**ことを前提にした、
-NotebookLM 風のローカルRAG（Retrieval-Augmented Generation）Webアプリケーションです。
+自治体・大学・研究室・企業などの組織向けに構築した、**自己ホスト型・複数ユーザー対応**の
+NotebookLM風ローカルRAG（Retrieval-Augmented Generation）Webアプリケーションです。
+アップロードした資料（PDF / TXT / Markdown / DOCX）に対して、ローカルLLM実行環境
+[Ollama](https://ollama.com/) を使って質問応答・要約ができます。
 
-LLM実行環境には [Ollama](https://ollama.com/) を利用し、外部クラウドLLMには依存しません。
+## NotebookLMとの違い
 
-> **現在のステータス: Phase 16（セキュリティ強化）**
-> Helmet・レート制限（グローバル10/秒・200/分、ログイン/パスワード変更は5/分）・
-> Prompt Injection対策（RAGプロンプトへのデリミタ付きデータ隔離）を実装済み。
-> CSRF・XSS・所有者チェック・ファイルアップロード制限・SQL Injection対策
-> （Drizzle ORM）・SSRF対策（URL取り込み機能なし）を含む点検項目をすべて
-> 実際のリクエストで動作確認済みです。
->
-> ⚠️ **重要なセキュリティ修正（Phase 10）**: `OwnershipGuard`がクラスレベルの
-> `@CheckOwnership`を認識していなかった不具合を修正済みです。
-> 詳細は本ファイル末尾の「既知の問題と修正履歴」を参照してください。
+- **完全にローカル・自己ホスト**：資料もLLMの推論もすべて自組織の環境内で完結し、
+  外部クラウドLLM APIには一切送信されません（Google NotebookLMのようなcrowd/クラウド
+  サービスへの依存がありません）。
+- **複数ユーザー・組織利用を前提**：ユーザーごとにログインアカウントを持ち、
+  自分のノートブック・ファイル・チャット履歴・RAG実行ログのみを操作できます
+  （他ユーザーのデータには一切アクセスできません）。
+- **管理者による集中管理**：ユーザー管理、利用モデルの選定、RAG方式の既定値、
+  監査ログの確認などを管理者が専用画面から行えます。
+- 個人利用のNotebookLMと異なり、**組織単位での運用・監査・利用状況の可視化**を
+  想定して設計されています。
 
----
+## マルチユーザー前提であることについて
 
-## 1. NotebookLMとの違い
+- 一般ユーザーは、自分が作成したノートブック・アップロードしたファイル・自分のチャット履歴・
+  自分のRAG実行ログのみを閲覧・操作できます。他ユーザーのノートブックIDやファイルIDを
+  直接指定してアクセスしようとしても、`403 Forbidden` になります。
+- 管理者であっても、一般ユーザー向けAPIでは上記の制限が免除されません
+  （管理者専用の別APIでのみ、全ユーザー横断の閲覧が可能です）。
 
-本アプリケーションは個人用ツールの単純なクローンではなく、**複数ユーザーがログインして使う組織内RAG基盤**として設計されています。
+## 技術スタック
 
-- 管理者(admin) / 一般ユーザー(user) のロール分離
-- ユーザーごとのノートブック・ファイル・チャット履歴の分離（`owner_user_id` によるスコープ制御）
-- RAG検索時も所有者・ノートブック単位で検索範囲を制限
-- 管理者による全体設定・監査ログ管理
-
-詳細は `docs/` 配下の仕様書（プロジェクト管理者が別途保持）を参照してください。
-
----
-
-## 2. 技術スタック
-
-| 領域 | 採用技術 |
+| 領域 | 技術 |
 |---|---|
-| Runtime | Node.js 24 LTS |
-| Package Manager | pnpm (npm からの実行も可能) |
-| Monorepo | pnpm workspaces |
-| Frontend | Next.js + React + TypeScript (`apps/web`) |
-| Backend | NestJS + TypeScript (`apps/api`) |
-| Database | SQLite + **Drizzle ORM** + better-sqlite3 |
-| Auth | Cookie-based session（サーバー側セッションストア、opaqueトークン） |
-| CSRF | Double-submit cookie方式 |
-| LLM Runtime | Ollama（Phase 9以降で接続） |
+| Frontend | Next.js + React + TypeScript（`apps/web`、ポート3000） |
+| Backend | NestJS + TypeScript（`apps/api`、ポート4000。Ollamaと通信できるのはこの層のみ） |
+| DB | SQLite（WALモード）+ **Drizzle ORM** + **better-sqlite3（v12系固定）** |
+| PDFテキスト抽出 | **`pdfjs-dist`**（Mozilla公式、保守されているライブラリ） |
+| DOCXテキスト抽出 | **`mammoth`** |
+| LLM実行環境 | [Ollama](https://ollama.com/)（`http://localhost:11434`） |
+| 認証 | Cookie-basedセッション（サーバー側セッションストア）+ CSRF（double-submit cookie） |
+| パッケージ管理 | pnpm workspaces（monorepo） |
 
-> **ORMについて:** 当初はPrisma/Drizzleのどちらでも良い方針でしたが、Prisma CLIが
-> マイグレーション実行時にクエリエンジン等のバイナリを外部CDNからダウンロードする
-> 仕様のため、社内プロキシやオフライン環境などダウンロード元へアクセスできない
-> ネットワークでは `pnpm db:migrate` 等が失敗する可能性があります。そのため、
-> ネイティブモジュール（better-sqlite3）以外は追加のバイナリダウンロードが不要な
-> **Drizzle ORM** を採用しています。`better-sqlite3` はプリビルド済みバイナリを
-> GitHub Releases から取得できるバージョン（v12系）に固定しています。
+DBには意図的にPrismaを採用していません（Prisma CLIがマイグレーション実行時に
+バイナリを外部CDNからダウンロードする仕様のため、社内プロキシ等の閉域網で失敗するケースが
+あったためです）。
 
-### モノレポ構成
+## 必要環境
 
-```text
-local-notebook-ai/
-  apps/
-    web/                       # Next.js frontend (UI層。Ollamaへは直接アクセスしない)
-      src/middleware.ts        # 保護ページのサーバーサイドリダイレクト
-      src/lib/api-client.ts    # API呼び出し共通ヘルパー(CSRF/Cookie/エラー処理)
-      src/i18n/
-        index.ts               # 翻訳ルックアップ(サーバー/クライアント共通)
-        use-translation.ts     # useTranslation()フック(クライアント専用)
-        locales/{ja,en}/       # common/auth/notebook/admin別JSON
-      src/components/
-        app-header.tsx          # 言語切替UI・ログイン状態・Role表示を持つ共通ヘッダー
-        notebook-sidebar.tsx    # ノートブック一覧+新規作成フォーム(左カラム)
-        notebook-chat-panel.tsx # チャットログ+引用元+Retrieval Details+RAG Strategy切替(中央)
-        notebook-sources-panel.tsx  # アップロード+ファイル一覧+Preview/Summary/Delete(右)
-        file-preview-modal.tsx  # 抽出済みテキストのプレビュー表示
-      src/hooks/use-current-user.ts  # クライアント側の認証チェック共通フック
-      src/app/[locale]/
-        layout.tsx             # ロケール検証 + AppHeader組み込み
-        login/                 # ログイン画面(翻訳適用済み)
-        notebooks/
-          layout.tsx           # 認証チェック + NotebookSidebar組み込み
-          page.tsx             # 未選択時のプレースホルダー
-          [notebookId]/page.tsx  # ノートブック詳細(表示/編集/削除)
-        admin/                 # 管理者専用領域(Phase 3プレースホルダー、翻訳適用済み)
-        change-password/       # パスワード変更誘導画面(構造のみ、API未実装、翻訳適用済み)
-    api/                       # NestJS backend (API/業務ロジック層)
-      drizzle/                 # 生成されたSQLマイグレーションファイル
-      drizzle.config.ts        # drizzle-kit設定
-      scripts/db-env.js        # DB系CLIコマンド用の.env読み込み/パス解決ラッパー
-      src/db/
-        schema.ts              # 全テーブル定義(usersテーブル + sessionsテーブル等)
-        db.service.ts          # Nest向けDB接続サービス
-        seed.ts                # 初期管理者seedスクリプト
-      src/auth/
-        auth.controller.ts     # /api/auth/{login,logout,me,csrf}
-        auth.service.ts        # 認証ロジック(bcrypt照合)
-        session.service.ts     # セッションストアCRUD
-        csrf.service.ts        # CSRFトークン発行・検証
-        guards/                # CsrfGuard(全体適用) / SessionAuthGuard
-        middleware/             # SessionMiddleware(req.user付与)
-      src/common/
-        app-exception.ts       # code付きHTTP例外
-        http-exception.filter.ts # {error:{code,message}}形式に統一
-        zod-validation.pipe.ts # Zodベースのリクエストボディ検証
-        authorization/
-          roles.guard.ts       # RolesGuard(@Roles()デコレータを強制)
-          admin-only.decorator.ts # @AdminOnly()便利デコレータ
-          ownership.guard.ts   # OwnershipGuard(notebook_id/file_idの所有者チェック)
-          check-ownership.decorator.ts # @CheckOwnership()デコレータ
-      src/audit-log/
-        audit-log.service.ts   # 監査ログ記録基盤(AuditLogService)
-      src/notebooks/           # ノートブックAPI(Phase 6でCRUD完成: 更新/論理削除を追加)
-      src/files/                # ファイルAPI(Phase 7でアップロード/一覧/削除、Phase 13でPreview追加)
-        file-validation.ts      # MIME/マジックナンバー検査、実行ファイル拒否
-        notebook-files.controller.ts  # POST/GET /api/notebooks/:id/files
-      src/storage/
-        local-storage.adapter.ts  # StorageAdapter実装(LOCAL_STORAGE_ROOT配下)
-      src/document-processing/    # テキスト抽出・チャンク化(Phase 8)
-        embedding-model-resolver.service.ts  # embeddings/内(Phase 10)
-      src/embeddings/
-        embeddings.service.ts    # チャンクへのEmbedding生成・保存(Phase 10)
-      src/search/
-        vector-search.service.ts # cosine similarity検索(Phase 10、owner+notebook絞込)
-      src/rag/
-        rag.service.ts           # RAGオーケストレーション(session/message/rag_run記録)
-        rag-strategy-resolver.service.ts  # notebook override→管理設定→.envの優先順位解決
-        answer-generator.service.ts  # 両ストラテジー共通の「実チャンクのみ根拠」生成
-        strategies/
-          standard-rag.strategy.ts
-          hyde-rag.strategy.ts    # 仮想文書生成→Embedding→検索(Phase 12)
-      src/system-settings/
-        system-settings.service.ts  # system_settingsテーブル汎用KVストア
-        extraction.ts            # PDF(pdfjs-dist)/DOCX(mammoth)/TXT/MD抽出
-        chunking.ts               # 段落単位の素朴なチャンク分割
-        document-processing.service.ts  # status遷移+document_chunks保存
-      src/admin/                # 管理者専用API(Phase 4は最小限、Phase 14で本実装)
-        ollama-admin.controller.ts  # Ollama接続確認・モデル設定API(Phase 9)
-      src/ollama/
-        ollama.service.ts        # Ollama REST APIクライアント(fetch使用、APIのみ)
-      src/models/
-        models.service.ts        # modelsテーブル同期・既定モデル設定
-  packages/
-    shared/                    # 共有の型・定数・i18nキー（Phase 1では雛形のみ）
-    storage/                   # StorageAdapterインターフェース（Phase 7で実装）
-    rag-core/                  # RagStrategyインターフェース（Phase 11/12で実装）
-  data/                        # SQLiteファイル格納先
-  storage/uploads/             # アップロードファイル実体（Phase 7以降）
-  .env.example
-  package.json
-  pnpm-workspace.yaml
-```
+- **Node.js 24 LTS**（開発時の検証環境はv22でしたが、動作に影響はありません。engines警告が
+  出ることがあります）
+- **pnpm**（workspaces対応バージョン）
+- **[Ollama](https://ollama.com/)** がローカルまたはネットワーク到達可能な場所で起動していること
+- Dockerは**不要**です（後述）
 
----
+## セットアップ手順
 
-## 3. 必要環境
-
-- **Node.js 24 LTS**（`>=24 <25`）
-  - 開発機に v24 が未導入の場合は [nvm](https://github.com/nvm-sh/nvm) 等の利用を推奨します
-  - v22 などバージョンが異なっていても機能自体は動作しますが、`engines` の警告が出ます
-- **pnpm 9 以上**（`corepack enable` で有効化可能）
-- Docker は **不要**です（任意手段としてのみ将来追加され得ます）
-
----
-
-## 4. セットアップ
+### 1. リポジトリの取得とパッケージインストール
 
 ```bash
-corepack enable
 pnpm install
+```
+
+リポジトリルートで実行してください（monorepo全体の依存関係がインストールされます）。
+
+### 2. `.env` の作成
+
+リポジトリルート直下に `.env.example` があります。これをコピーして使います。
+
+```bash
 cp .env.example .env
 ```
 
-続けてDBスキーマを作成し、初期管理者を作成します。
+最低限、以下の値は起動前に確認・変更してください。
+
+- `SESSION_SECRET`：ランダムな長い文字列に変更してください（16文字以上必須）。
+  プレースホルダーのままだと起動時に警告が出ます。
+- `INITIAL_ADMIN_EMAIL` / `INITIAL_ADMIN_PASSWORD`：初期管理者アカウントの
+  メールアドレス・パスワード（8文字以上）。こちらもプレースホルダーのままだと
+  起動時に警告が出ます。
+- `DATABASE_URL`：既定値は `file:./data/local-notebook-ai.sqlite`（リポジトリルート
+  基準の相対パス）です。通常は変更不要です。
+- `OLLAMA_BASE_URL`：既定値は `http://localhost:11434` です。Ollamaを別ホストで
+  動かしている場合はここを変更してください。
+- `DEFAULT_GENERATION_MODEL` / `DEFAULT_EMBEDDING_MODEL`：既定では
+  `phi4-mini:3.8b` / `nomic-embed-text` が設定されています。次の手順で
+  これらのモデルをOllamaに用意します（別のモデルを使いたい場合はここを変更してください）。
+
+`apps/web` は、このうち `APP_BASE_URL` / `API_BASE_URL` / `DEFAULT_LOCALE` /
+`SUPPORTED_LOCALES` などの非秘匿な値しか読みません。`SESSION_SECRET` や
+`DATABASE_URL`、管理者パスワードのような秘匿情報がブラウザに渡ることはありません。
+
+### 3. Ollamaの準備
+
+[Ollama公式サイト](https://ollama.com/)の手順に従ってインストールし、起動してください。
+その後、`.env` で指定した既定モデルを取得します。
 
 ```bash
-pnpm db:migrate   # SQLiteファイルを作成し、全テーブルを作成
-pnpm db:seed      # .envのINITIAL_ADMIN_*から初期管理者を作成
+ollama pull phi4-mini:3.8b
+ollama pull nomic-embed-text
 ```
 
-`pnpm db:migrate` / `pnpm db:seed` は、リポジトリルートの `.env` を自動的に読み込みます
-（`apps/api` からの相対パスに依存せず、常に `data/local-notebook-ai.sqlite` を対象にします）。
-`.env` が無い、または必須項目（`SESSION_SECRET`, `INITIAL_ADMIN_EMAIL`,
-`INITIAL_ADMIN_PASSWORD`）が不足している場合は、分かりやすいエラーメッセージを表示して
-終了します。
+（別のモデルを使う場合は、そのモデル名で `ollama pull` してください。モデルの切り替え・
+追加は、後述の管理画面「モデル管理」から行えます。）
 
----
+### 4. データベースのセットアップ
 
-## 5. 開発起動
+```bash
+cd apps/api
+pnpm db:generate
+pnpm db:migrate
+pnpm db:seed
+cd ../..
+```
 
-以下のいずれかで、Next.js frontend と NestJS backend を同時に起動します。
+- `db:generate`：`schema.ts` の内容からマイグレーションSQLを生成します
+  （スキーマファイルを変更していない初回セットアップでは、既存のマイグレーション
+  ファイルがそのまま使われます）。
+- `db:migrate`：マイグレーションを実際のSQLiteファイルに適用します。
+- `db:seed`：`.env` の `INITIAL_ADMIN_EMAIL` / `INITIAL_ADMIN_PASSWORD` /
+  `INITIAL_ADMIN_LOCALE` を使って、初期管理者アカウントを作成します。
+
+これら3つのコマンドは、必ず**`apps/api` ディレクトリの中で**実行してください
+（`DATABASE_URL` を正しい絶対パスに解決するラッパースクリプトが、そのディレクトリを
+基準に動く設計になっています）。
+
+### 5. 起動
+
+開発モード（リポジトリルートで実行）：
 
 ```bash
 pnpm dev
 ```
 
-または
+Frontend（`http://localhost:3000`）とBackend（`http://localhost:4000/api`）が
+同時に起動します。
 
-```bash
-npm run dev
-```
-
-起動後:
-
-- Next.js: <http://localhost:3000> — トップページが表示されます
-- ログイン画面: <http://localhost:3000/ja/login>
-  （初期管理者: `.env` の `INITIAL_ADMIN_EMAIL` / `INITIAL_ADMIN_PASSWORD`）
-- NestJS API: <http://localhost:4000/api/health> — JSONヘルスチェックが返ります
-
-```json
-{
-  "status": "ok",
-  "service": "local-notebook-ai-api",
-  "phase": "2",
-  "environment": "development",
-  "timestamp": "2026-01-01T00:00:00.000Z"
-}
-```
-
-### 認証の動作確認
-
-1. <http://localhost:3000/ja/login> で初期管理者としてログインする
-2. 初回ログイン時は `must_change_password=true` のため
-   `/ja/change-password`（構造のみのプレースホルダー）へ誘導される
-3. トップページの認証ステータス表示から「My Notebooks」「Admin」へ遷移できる
-4. 未ログイン状態で `/ja/notebooks` や `/ja/admin` へ直接アクセスすると
-   `/ja/login?next=...` へリダイレクトされる
-5. 一般ユーザー（adminロールでない）で `/ja/admin` にアクセスすると
-   `/ja/notebooks` へリダイレクトされる
-
-> 一般ユーザーを作成するAPI/画面はまだ存在しません（Phase 4のRBAC実装、
-> Phase 14の管理画面で追加されます）。現時点で一般ユーザーの動作を確認したい場合は、
-> `data/local-notebook-ai.sqlite` に直接レコードを追加してください。
-
----
-
-## 6. ビルド・本番相当起動
-
-### ビルド
+本番相当で動かす場合：
 
 ```bash
 pnpm build
-```
-
-または
-
-```bash
-npm run build
-```
-
-### 起動（ビルド済みアプリ）
-
-```bash
 pnpm start
 ```
 
-または
+### Docker について
 
-```bash
-npm start
-```
+**Dockerは必須ではありません。** 上記の通り `pnpm dev` / `pnpm start` だけで
+起動できるように設計されています。コンテナ化して運用したい場合は、Node.js 24環境と
+ポート3000・4000の公開、`.env` の受け渡し、`data/` と `storage/` ディレクトリの
+永続化（ボリュームマウント）を行えば、既存の構成をそのままコンテナに載せられます
+（このリポジトリ自体には現時点でDocker関連ファイルは含まれていません）。
 
----
+## 初期管理者でのログイン
 
-## 7. その他のスクリプト
+`db:seed` 実行後、`.env` の `INITIAL_ADMIN_EMAIL` / `INITIAL_ADMIN_PASSWORD` で
+ログインできます。初期管理者は `must_change_password = true` で作成されるため、
+ログイン後は**強制的にパスワード変更画面（`/change-password`）に遷移**します。
+現在のパスワード（＝初期パスワード）を入力したうえで、新しいパスワードに変更してください。
 
-root の `package.json` から、以下のスクリプトを各ワークスペースへ委譲しています。
+管理者アカウントは、ログイン後の画面上部「管理者」リンクから管理画面に入れます。
+一般ユーザーの追加も、この管理画面の「ユーザー」から行います。
 
-| スクリプト | 内容 |
-|---|---|
-| `pnpm dev` | web + api を同時に開発起動 |
-| `pnpm build` | api → web の順にビルド |
-| `pnpm start` | ビルド済み api + web を同時起動 |
-| `pnpm lint` | 全ワークスペースでlint実行 |
-| `pnpm test` | 全ワークスペースでtest実行（現時点ではプレースホルダー） |
-| `pnpm db:migrate` | SQLiteファイル作成 + 全テーブルのマイグレーション適用 |
-| `pnpm db:seed` | `.env` の `INITIAL_ADMIN_*` から初期管理者を作成（既存なら何もしない） |
-| `pnpm --filter api db:generate` | スキーマ変更後に新しいマイグレーションSQLを生成（開発時のみ） |
+## 対応ファイル形式
 
----
+現在アップロードできるのは以下の4形式です（拡張子と実際のファイル内容の両方を検証しています）。
 
-## 8. Dockerについて
+- PDF（`.pdf`）
+- テキスト（`.txt`）
+- Markdown（`.md` / `.markdown`）
+- Word文書（`.docx`）
 
-本アプリケーションは **Dockerを必須としません**。Node.js 24 LTS環境があれば、
-`npm`/`pnpm` scriptsのみで開発・起動が可能です。Docker Composeは将来、環境差分の吸収や
-授業配布、PostgreSQL/MinIO検証用途として任意で追加され得ますが、それが唯一の起動手段には
-しません。
+実行可能ファイル（Windows PE/ELF/Mach-O/シバン付きスクリプト等）は、拡張子を偽装していても
+内容から検出して拒否します。アップロード上限サイズは `.env` の `MAX_UPLOAD_SIZE_MB`
+（既定50MB）で調整できます。
 
----
+アップロードされたファイルは、テキスト抽出・チャンク分割・Embedding生成まで自動的に処理されます。
+処理が終わると、ノートブック画面の「ソース」パネルから、抽出内容のプレビューや、
+ファイル単位の**要約生成**（Ollamaの生成モデルを使って、その場で作成・キャッシュされます。
+資料が大きい場合は先頭部分のみを要約し、その旨が画面に表示されます）ができます。
 
-## 9. 実装状況
+## RAG方式（Standard RAG / HyDE RAG）
 
-### 実装済み（Phase 1〜16）
+ノートブックごとに、2種類のRAG方式のどちらかで資料検索・回答生成を行います。
 
-- monorepo基盤（Next.js frontend / NestJS backend / 共有パッケージ）
-- `.env` の読み込みと型検証（Zod）、不足時の分かりやすいエラー表示
-- SQLiteスキーマ（users, notebooks, files, document_chunks, chat_sessions,
-  chat_messages, models, system_settings, rag_runs, audit_logs, sessions）
-- 初期管理者のseed（bcryptによるパスワードハッシュ化）
-- Cookie-basedセッション認証（HttpOnly / SameSite=Lax / 本番ではSecure対応）
-- CSRFトークン発行・検証（double-submit cookie方式、状態変更API全体に適用）
-- `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`, `GET /api/auth/csrf`
-- ログイン失敗時は原因を問わず同一の汎用エラー（アカウント有無・パスワード誤りを判別させない）
-- `is_active=false` のユーザーはログイン不可（既存セッションも次のリクエストで無効化）
-- `must_change_password=true` のユーザーをパスワード変更画面へ誘導する構造
-- `/[locale]/login` ・ 保護ページ（`/[locale]/notebooks`, `/[locale]/admin`）の
-  サーバーサイドリダイレクト（Next.js middleware）
-- **RBAC**: `RolesGuard` + `@Roles()` / `@AdminOnly()` デコレータ（管理者専用APIをAPI側で強制）
-- **所有者チェック**: `OwnershipGuard` + `@CheckOwnership()` デコレータ
-  （notebook_id / file_idを直接指定されてもDB照会で所有者を検証。管理者もバイパスしない。
-  クラスレベル/メソッドレベルどちらに付けても正しく機能する — 詳細は12章参照）
-- 権限エラーは全経路で統一形式 `{"error":{"code":"FORBIDDEN","message":"..."}}`
-- 監査ログ基盤（`AuditLogService`）— ログイン成功/失敗、ログアウト、
-  ロール拒否（`authz.role_denied`）、所有者拒否（`authz.ownership_denied`）、
-  管理者によるユーザー作成（`admin.user.created`）を記録
-- `GET/POST /api/admin/users`（管理者専用、最小実装。完全な管理画面はPhase 14）
-- **i18n基盤**: 日本語(ja)/英語(en)のUI切替。`apps/web/src/i18n/`配下にi18next互換の
-  namespace別JSON（common/auth/notebook/admin）、ヘッダーからの言語切替UI
-  （`AppHeader`）、ログイン画面・ノートブック領域・管理者領域の翻訳を実装
-- **ノートブックCRUD**: `GET/POST /api/notebooks`, `GET/PUT/DELETE /api/notebooks/:id`
-  （削除は論理削除、`deleted_at`。`defaultRagStrategy`の更新にも対応）。
-  UIでも左カラムのノートブック一覧・新規作成フォーム・詳細画面
-  （表示/編集/削除、RAG Strategyはダミー表示）を実装
-- **ファイルアップロード**: `POST/GET /api/notebooks/:id/files`,
-  `GET/DELETE /api/files/:id`。`LocalStorageAdapter`（`StorageAdapter`
-  インターフェース実装、将来S3等へ差し替え可能）、UUID命名、
-  MIMEタイプ・マジックナンバー検査、実行可能ファイル拒否、パストラバーサル防止。
-  UIでもノートブック詳細画面の「Sources」セクションからアップロード・削除操作が可能
-- **テキスト抽出・チャンク化**: アップロード完了時に同期実行（`DocumentProcessingService`）。
-  PDF（`pdfjs-dist`、ページ単位でmetadata.pageを記録）、DOCX（`mammoth`）、
-  TXT/Markdown（そのままUTF-8デコード）に対応。段落単位の素朴なチャンク分割で
-  `document_chunks`に保存（owner_user_id / notebook_id / file_id を必ず記録）
-- **Ollama接続・モデル管理**: `GET /api/admin/ollama/status`（接続確認）、
-  `PUT /api/admin/ollama/settings`（既定生成/Embedding/HyDEモデル設定）、
-  `GET /api/admin/models`（一覧）、`POST /api/admin/models/sync-ollama`（同期）、
-  `PUT /api/admin/models/:id`（有効/無効切替）。
-  管理画面に「Ollama Connection」「Models」タブを追加
-- **Embedding・ベクトル検索**: チャンク作成直後に既定Embeddingモデルで
-  ベクトル生成（`files.status`は`uploaded → extracting → chunking → embedding → ready`
-  / 失敗時`failed`）。`document_chunks.embedding_vector_ref`にJSON配列として保存。
-  `POST /api/notebooks/:id/search`でcosine similarity検索（owner_user_id +
-  notebook_idで必ず絞り込み、RAG_TOP_K / RAG_SIMILARITY_THRESHOLDに対応）
-- **Standard RAG / HyDE RAG**: `POST /api/notebooks/:id/chat`。`RagStrategy`
-  インターフェースの下に`StandardRagStrategy`・`HydeRagStrategy`を実装し、
-  両者は`AnswerGenerator`（実チャンクのみを根拠に回答生成）を共有することで
-  「HyDE仮想文書を最終回答の根拠にしない」を構造的に保証。HyDE仮想文書は
-  `rag_runs.hyde_document`に常に保存されるが、API応答に含めるかは
-  `ALLOW_HYDE_DOCUMENT_PREVIEW`設定で制御（一般ユーザーには非表示、
-  管理者には常に表示）。戦略の選択は
-  ノートブック単位のオーバーライド（`ALLOW_NOTEBOOK_RAG_OVERRIDE`が真の場合）→
-  管理設定（`system_settings`、`GET/PUT /api/admin/rag/settings`）→
-  `.env`の`RAG_DEFAULT_STRATEGY`の優先順で解決。HyDE用prompt templateも
-  同様に管理設定から編集可能
-- **一般ユーザーUI（3カラムレイアウト）**: 左（`NotebookSidebar`、Phase 6から）・
-  中央（`NotebookChatPanel`：チャットログ、引用元バッジ、Retrieval Details、
-  RAG Strategy表示/切替）・右（`NotebookSourcesPanel`：アップロード、
-  ファイル一覧、Preview/Summary/Deleteボタン）。ヘッダーにRole表示を追加。
-  `GET /api/files/:id/preview`（新規、抽出済みチャンク内容を返す）でPreview
-  ボタンが実際に機能。Summaryボタンは「未実装」を明示するプレースホルダー
-  （生成AIによる要約機能は未実装のため）。LLM出力は常にプレーンテキストで
-  レンダリング（`dangerouslySetInnerHTML`不使用、React標準のエスケープでXSS対策）
-- **チャット履歴の永続表示**: `GET /api/notebooks/:id/chat/history`で全セッション・
-  全期間の会話を時系列取得し、UIで日付区切り付きで表示。新しい質問は直前の
-  セッションを引き継ぐ
-- **管理画面UI（全11メニュー）**: Dashboard（ユーザー/ノートブック/ファイル/
-  RAG実行数、Ollama接続状態）、Users（一覧・作成・ロール変更・有効無効切替）、
-  Files（全ユーザー横断のファイル一覧、admin専用の唯一の所有者チェック例外）、
-  Models・Ollama Connection（Phase 9から拡張）、RAG Settings（既定戦略・
-  HyDEプロンプトテンプレート編集、Top K等は読み取り専用表示）、i18n/Storage/
-  Security Settings（読み取り専用の設定確認画面）、Audit Logs（監査ログ一覧、
-  設定変更系操作の記録漏れをこのPhaseで追加）、System Health
-- **パスワード変更**: `POST /api/auth/change-password`。現在のパスワードを
-  検証してから変更し、`mustChangePassword`を解除。`/change-password`画面が
-  Phase 3以来のプレースホルダーから実際のフォームに置き換わった
-- **監査ログの事象拡充（Phase 15）**: `notebook.created`・`notebook.deleted`・
-  `file.uploaded`・`file.deleted`を追加記録。合わせて、フロントエンドだけで
-  起きる問題（画面遷移の失敗等）をサーバーに報告する`POST /api/client-log`を
-  新設し、`client.error`として同じ監査ログ画面に表示されるようにした
-- **使い方ガイド**: トップページ（`/`）がPhase 3時代の開発者向けステータス
-  表示から、管理画面「使い方ガイド」で編集できる利用者向けガイド文に置き換わった
-- **セキュリティ強化（Phase 16）**: Helmet導入（`X-Content-Type-Options`・
-  `X-Frame-Options`・既定CSP等）。レート制限（`@nestjs/throttler`、全体で
-  10リクエスト/秒・200リクエスト/分、`/api/auth/login`と
-  `/api/auth/change-password`は5リクエスト/分の専用制限）。RAGプロンプトへの
-  Prompt Injection対策（検索コンテキストをデリミタで明示的に区切り、
-  「データとして扱い指示として解釈しない」旨をプロンプト自体に明記）。
-  以下は既存実装済みだったことを本Phaseで再確認：CSRF必須、パストラバーサル
-  防止（`../../../../evil.txt`のような入力でも元ファイル名のbasenameのみ
-  抽出しUUID保存名を使用）、SQL Injection対策（Drizzle ORMのクエリビルダの
-  みを使用、生SQL文字列結合なし）、URL取り込み機能が存在しないこと（SSRF対策）
+- **Standard RAG**：質問文をそのままベクトル検索に使い、ヒットしたチャンクを根拠に回答を生成します。
+- **HyDE RAG**：質問に対する「仮想的な回答文書」をまずLLMに生成させ、その仮想文書をベクトル検索の
+  クエリとして使うことで、検索精度の向上を狙う方式です。
 
-### 未実装（次Phase以降）
+**重要：HyDEで生成した仮想文書は検索（クエリ生成）専用であり、最終的な回答の根拠には一切使われません。**
+両方式とも、実際に検索でヒットした本物の資料チャンクだけを根拠に、共通の回答生成コンポーネントが
+回答を作る設計になっており、この制約はプロンプトの指示だけでなく実装構造としても保証されています。
+（管理者設定でHyDE仮想文書自体をプレビュー表示させることもできますが、これはあくまで「検索に何を
+使ったか」の可視化であり、回答の根拠として提示しているわけではありません。）
 
-- ユーザー作成の自己申告フロー（現状は管理者作成のみ、初回ログイン時の
-  パスワード変更は対応済み）
-- ファイル要約（Summary）機能自体（ボタンはあるが「未実装」の案内のみ表示）
-- 管理画面からのRAG Top K・類似度しきい値・各種フラグの変更（現状`.env`のみ、
-  管理画面では読み取り専用表示）
-- ユーザー自身によるlocale変更UI（現状は管理者作成時のlocale指定と、
-  ログイン時に保存済みlocaleへリダイレクトする形のみ対応）
-- S3等オブジェクトストレージ対応（Storage Settings画面にプレースホルダーのみ表示）
+ノートブック作成者は、管理者が許可している場合に限り、ノートブックごとにこの方式を切り替えられます。
+
+## パスワード変更・使い方ガイド編集
+
+- **パスワード変更**：ログイン後、`/change-password` から、現在のパスワードを入力した上で
+  変更できます（強制フローの場合はログイン直後に自動でこの画面に遷移します）。
+- **使い方ガイドの編集**（管理者のみ）：トップページ（`/`）には、一般利用者向けの説明文が
+  表示されます。この本文は管理画面の「使い方ガイド」から、管理者が自由に編集できます
+  （未ログインの訪問者でも閲覧できますが、編集は管理者のみです）。
+
+## セキュリティ上の注意事項
+
+- 全APIレスポンスに `Cache-Control: no-store, no-cache, must-revalidate, proxy-revalidate`
+  等のキャッシュ禁止ヘッダーをグローバルに設定しています。ブラウザキャッシュによって
+  ログイン状態が古いまま表示される不具合を防ぐためです。
+- CSRF対策（double-submit cookie方式）により、状態を変更するすべてのリクエスト
+  （POST/PUT/DELETE）にCSRFトークンが必須です。
+- 認可ガード（ロール確認・所有者確認）は、コントローラのクラスレベル・メソッドレベル
+  どちらにデコレータを付けても正しく機能するよう実装しています（`getAllAndOverride`を
+  使用。過去にメソッドレベルの実装しか見ないバグがあり、他ユーザーのノートブックに
+  ファイルをアップロードできてしまう重大な欠陥が一時的に存在していたことがあります。
+  現在は修正済みですが、改修時にはこの点を必ず維持してください）。
+- ログイン・パスワード変更エンドポイントには専用のレート制限（5回/分）があります。
+- アップロードファイルは、拡張子だけでなく実際のファイル内容（マジックナンバー）も検査し、
+  実行可能ファイルは拒否します。保存パスはサーバー側で生成したIDから組み立てており、
+  ユーザーが指定したファイル名がパスの一部として使われることはありません
+  （パストラバーサル対策）。
+- 本番運用前に、`.env` の `SESSION_SECRET` と `INITIAL_ADMIN_PASSWORD` を、
+  プレースホルダーから必ず変更してください（プレースホルダーのままだと起動時に
+  警告が表示されます）。
+
+## 既知の未解決事象
+
+管理者ログイン成功後（APIレスポンス自体は200 OK）、まれに（再現性は低い）
+管理者専用ページへの画面遷移（`router.push()`）が実行されないことがあります。
+根本原因は本稿執筆時点で完全には特定できていません（ブラウザ拡張機能による干渉が
+疑われていますが未確定です）。
+
+回避策として、以下を実装済みです。
+
+- ブラウザ側だけで検知した問題を `POST /api/client-log` 経由でサーバーの監査ログに
+  記録する仕組み
+- ログイン画面で、画面遷移が1.2秒後もまだ実行されていなければ、
+  `window.location.href` による確実なハードリダイレクトを行うフォールバック
+
+この事象が疑われる場合は、管理画面の「監査ログ」で `client.*` というaction名の
+エントリを確認してください。
+
+## バックアップ方法
+
+このアプリのデータは、以下の2箇所に分かれて保存されています。定期的に、この2つを
+セットでバックアップしてください（どちらか一方だけでは復元できません）。
+
+- **SQLiteデータベースファイル**（既定: リポジトリルート直下の `data/local-notebook-ai.sqlite`。
+  WALモードのため、稼働中は同じディレクトリに `-wal` / `-shm` ファイルも存在します。
+  安全にバックアップするには、アプリを一旦停止してからコピーするか、
+  `sqlite3`の`.backup`コマンドのようなオンラインバックアップ手段を使ってください）
+- **アップロードファイルの実体**（既定: リポジトリルート直下の `storage/` ディレクトリ。
+  `.env` の `LOCAL_STORAGE_ROOT` で場所を変更している場合はそちらを対象にしてください）
+
+将来的にS3互換オブジェクトストレージへ移行した場合は、バケット単位のバックアップに
+切り替えることを想定しています（下記「将来拡張」参照）。
+
+## 将来拡張（現時点のMVPでは未実装）
+
+以下はSDD仕様書で将来拡張として位置づけられており、現時点のMVPには含まれていません。
+
+- **ストレージ**：S3 / MinIO / IBM Cloud Object Storageなど、外部オブジェクトストレージへの対応
+- **DB**：PostgreSQL + pgvectorへの移行（現在のSQLiteスキーマはこれを見据えた設計になっています）
+- **RAG**：Rerank RAG、Hybrid Search、Multi-query RAG、Graph RAG、LLM-as-a-Judge評価
+- **組織機能**：ノートブック共有、グループ、部署、授業クラス単位の権限テンプレート
+- **外部連携**：LDAP / SSO、Google Workspace、Microsoft Entra ID、外部クラウドLLM API
+- ユーザー自身によるUI言語切り替え機能
+- 既存チャンクの一括再Embedding機能（Embeddingモデル切り替え時、現状は該当ファイルの
+  再アップロードが必要です）
 
 ---
 
-## 10. 外部ソースコード利用ポリシー
-
-本プロジェクトの実装では、外部アプリケーション・OSSアプリケーション・GitHubリポジトリ・
-商用製品・SaaS・ブログ・記事・サンプル実装等のソースコードのコピー、改変コピー、貼り付け、
-実質的な再利用を禁止しています。公式ドキュメントの参照、npmパッケージの通常利用、
-公式CLI（`next`, `nest`, `drizzle-kit` 等）による初期雛形生成のみ許可されます。
-
----
-
-## 11. Phase成果物の出力方針
-
-各Phaseの実装成果物は、Zip/tar.gzなどのアーカイブにまとめず、ファイル1つ1つを個別に
-出力する方針で開発を進めています。変更ファイルは差分ではなく、変更後の完全なファイル
-内容として管理します。
-
----
-
-## 12. 既知の問題と修正履歴（重要）
-
-### Phase 10で発見・修正: OwnershipGuardがクラスレベルのデコレータを無視していた（重大）
-
-**発見の経緯**: Phase 10で`SearchController`を実装した際、クラスレベルに
-`@CheckOwnership(...)`を付けたが、他ユーザーのnotebook_idを指定してもエラーに
-ならない（403にならない）ことに気づいた。
-
-**原因**: `OwnershipGuard`が`this.reflector.get(OWNERSHIP_KEY, context.getHandler())`
-という、**メソッド単位のメタデータしか見ない実装**になっていた。NestJSの
-`SetMetadata`はクラスに付けるとクラス（コンストラクタ）にメタデータを記録するため、
-`context.getHandler()`（実行されるメソッド自体）からはそのメタデータを取得できず、
-ガードは「所有者チェックの指定なし」と判断してチェックをスキップしてしまう。
-
-**影響範囲**: `@CheckOwnership`をクラスレベルに付けていたコントローラすべてが対象。
-具体的には：
-- **`NotebookFilesController`（Phase 7で実装）**: `POST/GET /api/notebooks/:notebookId/files`
-  （ファイルアップロード・一覧）。**Phase 7〜9の間、他ユーザーのnotebook_idを
-  指定すれば、誰でも任意のノートブックにファイルをアップロードしたり、
-  ファイル一覧を取得できていた可能性がある。**
-- `SearchController`（Phase 10で新規実装、リリース前に発見）
-
-一方、`NotebooksController`・`FilesController`（`GET/PUT/DELETE /api/notebooks/:id`,
-`GET/DELETE /api/files/:id`）はメソッドレベルに`@CheckOwnership`を付けていたため、
-この問題の影響を受けていない（Phase 6/7のテストで403が正しく確認できていたのはこのため）。
-
-**修正内容**: `OwnershipGuard`を`this.reflector.getAllAndOverride(OWNERSHIP_KEY,
-[context.getHandler(), context.getClass()])`に変更し、メソッド・クラスどちらに
-付けても正しく認識されるようにした。修正後、`NotebookFilesController`・
-`SearchController`両方で他ユーザーのnotebook_idに対する403が正しく返ることを
-再確認済み（Phase 10のテストで確認）。
-
-**対応が必要な場合**: 既にこのアプリケーションを他のユーザーと共有する形で
-運用していた場合、Phase 7リリース以降に他ユーザーが自分のノートブックへ
-不正にファイルをアップロードしていないか、監査ログ（現時点では
-`authz.ownership_denied`イベントのみ記録対象のため、この不具合が有効だった間の
-不正アクセス自体は記録されていない点に注意）やstorageディレクトリの内容を
-確認することを推奨する。
-
----
+質問・不具合報告は、管理者（本アプリの運用担当者）までご連絡ください。

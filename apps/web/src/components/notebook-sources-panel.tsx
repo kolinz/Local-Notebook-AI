@@ -5,6 +5,7 @@ import { useTranslation } from "@/i18n/use-translation";
 import {
   ApiError,
   deleteFile,
+  generateFileSummary,
   listNotebookFiles,
   uploadFile,
   type FileRecord,
@@ -30,9 +31,15 @@ export function NotebookSourcesPanel({ notebookId }: Props) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [previewFile, setPreviewFile] = useState<FileRecord | null>(null);
-  const [summaryNoticeFor, setSummaryNoticeFor] = useState<string | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const dragCounterRef = useRef(0);
+
+  // File summary feature: which file's summary panel is expanded, which
+  // file (if any) is currently generating, and any per-file error —
+  // keyed by fileId since several files' rows are visible at once.
+  const [expandedSummaryFor, setExpandedSummaryFor] = useState<string | null>(null);
+  const [summaryLoadingFor, setSummaryLoadingFor] = useState<string | null>(null);
+  const [summaryErrors, setSummaryErrors] = useState<Record<string, string>>({});
 
   async function refreshFiles() {
     try {
@@ -108,6 +115,49 @@ export function NotebookSourcesPanel({ notebookId }: Props) {
     await refreshFiles();
   }
 
+  /**
+   * File summary feature. Calls the real `POST /api/files/:id/summary`
+   * endpoint (generate on first use, regenerate on later calls) and
+   * merges the returned file record back into `files` so
+   * `summaryText`/`summaryTruncated` are immediately available without
+   * a full `refreshFiles()` round-trip.
+   */
+  async function handleGenerateSummary(fileId: string) {
+    setSummaryErrors((prev) => {
+      if (!(fileId in prev)) return prev;
+      const next = { ...prev };
+      delete next[fileId];
+      return next;
+    });
+    setSummaryLoadingFor(fileId);
+    try {
+      const updated = await generateFileSummary(fileId);
+      setFiles((prev) => prev.map((file) => (file.id === fileId ? updated : file)));
+      setExpandedSummaryFor(fileId);
+    } catch (err) {
+      setSummaryErrors((prev) => ({
+        ...prev,
+        [fileId]: err instanceof ApiError ? err.message : t("summaryError"),
+      }));
+    } finally {
+      setSummaryLoadingFor(null);
+    }
+  }
+
+  /**
+   * The "Summary" button: if a summary is already cached on the file
+   * record, just toggle showing it (no new Ollama call) — regeneration
+   * is a separate, explicit button inside the expanded panel. If none
+   * is cached yet, clicking generates one.
+   */
+  function handleSummaryButtonClick(file: FileRecord) {
+    if (file.summaryText) {
+      setExpandedSummaryFor((current) => (current === file.id ? null : file.id));
+      return;
+    }
+    void handleGenerateSummary(file.id);
+  }
+
   return (
     <div className="notebook-sources">
       <h2>{t("sourcesTitle")}</h2>
@@ -139,41 +189,64 @@ export function NotebookSourcesPanel({ notebookId }: Props) {
         <p className="notebook-sources__empty">{t("noFiles")}</p>
       ) : (
         <ul className="notebook-sources__list">
-          {files.map((file) => (
-            <li key={file.id} className="notebook-sources__item">
-              <div className="notebook-sources__item-main">
-                <FileKindBadge extension={extensionOf(file.originalFilename)} />
-                <div className="notebook-sources__item-text">
-                  <span className="notebook-sources__name">{file.originalFilename}</span>
-                  <span className="notebook-sources__meta">
-                    {(file.sizeBytes / 1024).toFixed(1)} KB ·{" "}
-                    <span className="notebook-sources__status">{file.status}</span>
-                  </span>
+          {files.map((file) => {
+            const isGenerating = summaryLoadingFor === file.id;
+            const isExpanded = expandedSummaryFor === file.id;
+            const summaryError = summaryErrors[file.id];
+
+            return (
+              <li key={file.id} className="notebook-sources__item">
+                <div className="notebook-sources__item-main">
+                  <FileKindBadge extension={extensionOf(file.originalFilename)} />
+                  <div className="notebook-sources__item-text">
+                    <span className="notebook-sources__name">{file.originalFilename}</span>
+                    <span className="notebook-sources__meta">
+                      {(file.sizeBytes / 1024).toFixed(1)} KB ·{" "}
+                      <span className="notebook-sources__status">{file.status}</span>
+                    </span>
+                  </div>
                 </div>
-              </div>
-              <div className="notebook-sources__item-actions">
-                <button type="button" onClick={() => setPreviewFile(file)}>
-                  <EyeIcon className="notebook-sources__action-icon" />
-                  {t("previewButton")}
-                </button>
-                <button type="button" onClick={() => setSummaryNoticeFor(file.id)}>
-                  <SparkleIcon className="notebook-sources__action-icon" />
-                  {t("summaryButton")}
-                </button>
-                <button type="button" onClick={() => handleDeleteFile(file.id)}>
-                  <TrashIcon className="notebook-sources__action-icon" />
-                </button>
-              </div>
-              {summaryNoticeFor === file.id && (
-                <p className="notebook-sources__summary-notice">
-                  {t("summaryNotAvailable")}{" "}
-                  <button type="button" onClick={() => setSummaryNoticeFor(null)}>
-                    {t("previewClose")}
+                <div className="notebook-sources__item-actions">
+                  <button type="button" onClick={() => setPreviewFile(file)}>
+                    <EyeIcon className="notebook-sources__action-icon" />
+                    {t("previewButton")}
                   </button>
-                </p>
-              )}
-            </li>
-          ))}
+                  <button type="button" onClick={() => handleSummaryButtonClick(file)} disabled={isGenerating}>
+                    <SparkleIcon className="notebook-sources__action-icon" />
+                    {isGenerating ? t("summaryGenerating") : t("summaryButton")}
+                  </button>
+                  <button type="button" onClick={() => handleDeleteFile(file.id)}>
+                    <TrashIcon className="notebook-sources__action-icon" />
+                  </button>
+                </div>
+
+                {summaryError && <p className="error-text">{summaryError}</p>}
+
+                {isExpanded && file.summaryText && (
+                  <div className="notebook-sources__summary">
+                    {file.summaryTruncated && (
+                      <p className="notebook-sources__summary-notice">{t("summaryTruncatedNotice")}</p>
+                    )}
+                    {/* Plain-text rendering only, same as FilePreviewModal's
+                        chunk text — LLM output is never interpreted as HTML. */}
+                    <p className="notebook-sources__summary-text">{file.summaryText}</p>
+                    <div className="notebook-sources__summary-actions">
+                      <button
+                        type="button"
+                        onClick={() => void handleGenerateSummary(file.id)}
+                        disabled={isGenerating}
+                      >
+                        {isGenerating ? t("summaryGenerating") : t("summaryRegenerate")}
+                      </button>
+                      <button type="button" onClick={() => setExpandedSummaryFor(null)}>
+                        {t("previewClose")}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
 
