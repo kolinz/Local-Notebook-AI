@@ -96,7 +96,7 @@ cp .env.example .env
 
 ```bash
 ollama pull phi4-mini:3.8b
-ollama pull nomic-embed-text
+ollama pull nomic-embed-text:latest
 ```
 
 （別のモデルを使う場合は、そのモデル名で `ollama pull` してください。モデルの切り替え・
