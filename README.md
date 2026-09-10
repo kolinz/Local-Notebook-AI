@@ -56,6 +56,7 @@ DBには意図的にPrismaを採用していません（Prisma CLIがマイグ�
 ### 1. リポジトリの取得とパッケージインストール
 
 ```bash
+corepack enable
 pnpm install
 ```
 
