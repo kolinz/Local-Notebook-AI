@@ -9,9 +9,11 @@ import { AuditLogService } from "../audit-log/audit-log.service";
 import { DbService } from "../db/db.service";
 import { auditLogs, files, notebooks, ragRuns, users } from "../db/schema";
 import { AppConfigService } from "../config/app-config.service";
+import { isPlaceholderAdminPassword, isPlaceholderSessionSecret } from "../config/configuration";
 import { OllamaService } from "../ollama/ollama.service";
 import { createUserSchema, type CreateUserDto } from "./dto/create-user.dto";
 import { updateUserSchema, type UpdateUserDto } from "./dto/update-user.dto";
+import { revealSecretSchema, type RevealSecretDto } from "./dto/reveal-secret.dto";
 
 const BCRYPT_SALT_ROUNDS = 12;
 const AUDIT_LOG_PAGE_SIZE = 200;
@@ -28,7 +30,21 @@ const AUDIT_LOG_PAGE_SIZE = 200;
  * dashboard counts, audit log listing, and a read-only system-info bundle
  * (storage/security/i18n settings the Storage/Security/i18n Settings and
  * System Health screens display — none of these are admin-editable at
- * runtime, so there's no corresponding PUT).
+ * runtime in this Phase, so there is no matching PUT).
+ *
+ * (System-info secret reveal feature.) `system-info` was extended to show
+ * effectively the entire non-secret `.env`-derived config (Kohei wanted
+ * this checkable from the admin screen without needing a terminal — a
+ * real need for non-technical operators, e.g. municipal staff, who can
+ * find a terminal intimidating). The two genuinely dangerous values
+ * (`SESSION_SECRET`, `INITIAL_ADMIN_PASSWORD`) are the deliberate
+ * exception: `system-info` reports only their placeholder/configured
+ * *status*, never the raw value. `POST /api/admin/system-info/reveal-secret`
+ * exists so an admin can still see either raw value on demand (a
+ * reveal-behind-a-click UI, like a password field's eye icon) — every
+ * call is recorded to the audit log (key name only, never the secret
+ * itself) so there's a record of who viewed it and when, matching this
+ * codebase's "log everything" audit philosophy.
  */
 @Controller("admin")
 export class AdminController {
@@ -242,36 +258,121 @@ export class AdminController {
 
   /**
    * Read-only bundle backing the Storage Settings / Security Settings /
-   * i18n Settings / System Health screens. Every value here comes
-   * straight from `.env` (via `AppConfigService`) — none of it is
-   * admin-editable at runtime in this Phase, so there is no matching PUT.
-   * Secrets (SESSION_SECRET, DB path internals) are deliberately never
-   * included.
+   * i18n Settings / System Health screens, PLUS (as of the system-info
+   * secret reveal feature) effectively every other `.env`-derived value
+   * — Ollama connection/model defaults, the new generation-tuning knobs
+   * (temperature, output-token caps, thinking-mode toggle), RAG defaults,
+   * app URLs/ports, and the resolved database path. None of this is
+   * admin-editable at runtime, so there is no matching PUT.
+   *
+   * `SESSION_SECRET` and `INITIAL_ADMIN_PASSWORD` are the deliberate
+   * exception: only a status (`isPlaceholder`, and length for the
+   * session secret) is reported here — never the raw value. Use
+   * `POST /api/admin/system-info/reveal-secret` to see either raw value
+   * on demand.
    */
   @Get("system-info")
   @AdminOnly()
   systemInfo() {
+    const config = this.appConfig.config;
     return {
+      // --- unchanged from before the system-info secret reveal feature ---
       storage: {
-        driver: this.appConfig.config.storage.driver,
-        localRoot: this.appConfig.config.storage.localRoot,
-        maxUploadSizeMb: this.appConfig.config.storage.maxUploadSizeMb,
+        driver: config.storage.driver,
+        localRoot: config.storage.localRoot,
+        maxUploadSizeMb: config.storage.maxUploadSizeMb,
       },
       security: {
         csrfEnabled: true,
-        cookieName: this.appConfig.config.session.cookieName,
-        cookieSecure: this.appConfig.config.session.cookieSecure,
-        cookieSameSite: this.appConfig.config.session.cookieSameSite,
+        cookieName: config.session.cookieName,
+        cookieSecure: config.session.cookieSecure,
+        cookieSameSite: config.session.cookieSameSite,
         allowedExtensions: [".pdf", ".txt", ".md", ".markdown", ".docx"],
+        // Additive: the existing shape (cookieName/cookieSecure/
+        // cookieSameSite/allowedExtensions) is untouched — these are
+        // new keys alongside them, not a replacement.
+        csrfCookieName: config.csrf.cookieName,
+        csrfHeaderName: config.csrf.headerName,
       },
       i18n: {
-        defaultLocale: this.appConfig.config.i18n.defaultLocale,
-        supportedLocales: this.appConfig.config.i18n.supportedLocales,
+        defaultLocale: config.i18n.defaultLocale,
+        supportedLocales: config.i18n.supportedLocales,
       },
       system: {
-        nodeEnv: this.appConfig.config.app.nodeEnv,
+        nodeEnv: config.app.nodeEnv,
         uptimeSeconds: Math.round(process.uptime()),
       },
+      // --- new sections (system-info secret reveal feature) ---
+      app: {
+        appBaseUrl: config.app.appBaseUrl,
+        apiBaseUrl: config.app.apiBaseUrl,
+        portWeb: config.app.portWeb,
+        portApi: config.app.portApi,
+      },
+      database: {
+        url: config.database.url,
+      },
+      ollama: {
+        baseUrl: config.ollama.baseUrl,
+        defaultGenerationModel: config.ollama.defaultGenerationModel,
+        defaultEmbeddingModel: config.ollama.defaultEmbeddingModel,
+        generationTemperature: config.ollama.generationTemperature,
+        hydeMaxOutputTokens: config.ollama.hydeMaxOutputTokens,
+        answerMaxOutputTokens: config.ollama.answerMaxOutputTokens,
+        disableThinking: config.ollama.disableThinking,
+      },
+      rag: {
+        defaultStrategy: config.rag.defaultStrategy,
+        topK: config.rag.topK,
+        similarityThreshold: config.rag.similarityThreshold,
+        allowNotebookOverride: config.rag.allowNotebookOverride,
+        showRetrievalDebug: config.rag.showRetrievalDebug,
+        allowHydeDocumentPreview: config.rag.allowHydeDocumentPreview,
+      },
+      // A new top-level key — "session" wasn't used by the previous
+      // response shape, so this can't collide with anything an
+      // existing screen already reads.
+      session: {
+        secretStatus: {
+          isPlaceholder: isPlaceholderSessionSecret(config.session.secret),
+          length: config.session.secret.length,
+        },
+      },
+      initialAdmin: {
+        email: config.initialAdmin.email,
+        locale: config.initialAdmin.locale,
+        passwordStatus: {
+          isPlaceholder: isPlaceholderAdminPassword(config.initialAdmin.password),
+        },
+      },
     };
+  }
+
+  /**
+   * (System-info secret reveal feature.) Returns the raw value of
+   * exactly one secret, chosen by `key` — never both, and never as part
+   * of the general `system-info` payload. Every call is audit-logged
+   * (the key name only; the value itself is never written to the audit
+   * log) so there is a record of who revealed which secret, when.
+   */
+  @Post("system-info/reveal-secret")
+  @HttpCode(200)
+  @AdminOnly()
+  revealSecret(@Body(new ZodValidationPipe(revealSecretSchema)) body: RevealSecretDto, @Req() req: Request) {
+    const value =
+      body.key === "sessionSecret"
+        ? this.appConfig.config.session.secret
+        : this.appConfig.config.initialAdmin.password;
+
+    this.auditLogService.record({
+      actorUserId: req.user!.id,
+      action: "admin.secret_revealed",
+      resourceType: "config_secret",
+      resourceId: body.key,
+      ipAddress: req.ip,
+      userAgent: req.header("user-agent"),
+    });
+
+    return { key: body.key, value };
   }
 }

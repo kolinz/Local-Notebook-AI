@@ -529,14 +529,58 @@ export interface AdminSystemInfo {
     cookieSecure: boolean;
     cookieSameSite: string;
     allowedExtensions: string[];
+    /** Additive fields — the rest of this object is unchanged from before. */
+    csrfCookieName: string;
+    csrfHeaderName: string;
   };
   i18n: { defaultLocale: string; supportedLocales: string[] };
   system: { nodeEnv: string; uptimeSeconds: number };
+  /** (System-info secret reveal feature.) New sections below — none of these existed before. */
+  app: { appBaseUrl: string; apiBaseUrl: string; portWeb: number; portApi: number };
+  database: { url: string };
+  ollama: {
+    baseUrl: string;
+    defaultGenerationModel: string;
+    defaultEmbeddingModel: string;
+    generationTemperature: number;
+    hydeMaxOutputTokens: number;
+    answerMaxOutputTokens: number;
+    disableThinking: boolean;
+  };
+  rag: {
+    defaultStrategy: "standard" | "hyde";
+    topK: number;
+    similarityThreshold: number;
+    allowNotebookOverride: boolean;
+    showRetrievalDebug: boolean;
+    allowHydeDocumentPreview: boolean;
+  };
+  /** Never the raw secret — only whether it's still the `.env.example` placeholder, and its length. */
+  session: { secretStatus: { isPlaceholder: boolean; length: number } };
+  initialAdmin: {
+    email: string;
+    locale: string;
+    /** Never the raw password — only whether it's still the `.env.example` placeholder. */
+    passwordStatus: { isPlaceholder: boolean };
+  };
 }
 
 /** Admin-only. Read-only bundle backing Storage/Security/i18n Settings and System Health. */
 export async function getAdminSystemInfo(): Promise<AdminSystemInfo> {
   return apiFetch("/api/admin/system-info");
+}
+
+/**
+ * (System-info secret reveal feature.) Fetches the raw value of exactly
+ * one secret on demand — never included in `getAdminSystemInfo()`'s
+ * response. The backend audit-logs every call (key name only).
+ */
+export async function revealAdminSecret(key: "sessionSecret" | "initialAdminPassword"): Promise<string> {
+  const data = await apiFetch<{ key: string; value: string }>("/api/admin/system-info/reveal-secret", {
+    method: "POST",
+    body: { key },
+  });
+  return data.value;
 }
 
 export interface RagSettings {

@@ -8,6 +8,7 @@ import { STORAGE_ADAPTER } from "../storage/storage.tokens";
 import { mimeTypeForKind, validateUpload } from "./file-validation";
 import { OllamaService } from "../ollama/ollama.service";
 import { ModelsService } from "../models/models.service";
+import { AppConfigService } from "../config/app-config.service";
 
 export interface UploadFileInput {
   ownerUserId: string;
@@ -36,6 +37,7 @@ export class FilesService {
     @Inject(STORAGE_ADAPTER) private readonly storage: StorageAdapter,
     private readonly ollamaService: OllamaService,
     private readonly modelsService: ModelsService,
+    private readonly appConfig: AppConfigService,
   ) {}
 
   private get db() {
@@ -162,7 +164,13 @@ export class FilesService {
 
     let summaryText: string;
     try {
-      summaryText = (await this.ollamaService.generateCompletion(model, prompt)).trim();
+      summaryText = (
+        await this.ollamaService.generateCompletion(model, prompt, {
+          temperature: this.appConfig.config.ollama.generationTemperature,
+          maxOutputTokens: this.appConfig.config.ollama.answerMaxOutputTokens,
+          disableThinking: this.appConfig.config.ollama.disableThinking,
+        })
+      ).trim();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`Summary generation failed for file ${fileId}: ${message}`);

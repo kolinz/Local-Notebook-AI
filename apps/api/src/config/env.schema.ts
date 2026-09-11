@@ -78,6 +78,50 @@ export const envSchema = z.object({
   OLLAMA_BASE_URL: z.string().url().default("http://localhost:11434"),
   DEFAULT_GENERATION_MODEL: z.string().min(1).default("llama3.1:8b"),
   DEFAULT_EMBEDDING_MODEL: z.string().min(1).default("nomic-embed-text"),
+  /**
+   * (Temperature tuning feature.) Forwarded to Ollama's completion
+   * calls for RAG answer generation, HyDE hypothetical-document
+   * generation, and file summarization — NOT embeddings (Ollama's
+   * embeddings endpoint has no temperature concept). Lower values make
+   * output more deterministic. Ollama's own default (~0.8) is tuned
+   * for open-ended chat and was observed to make a small (~3.8B) local
+   * model inconsistently add unrequested preamble before a required
+   * fixed-wording answer, across otherwise-identical calls. 0.2 is a
+   * reasonable starting point; raise it if a given model's answers
+   * feel too rigid/repetitive.
+   */
+  OLLAMA_GENERATION_TEMPERATURE: z.coerce.number().min(0).max(2).default(0.2),
+  /**
+   * (Runaway-generation guard.) Forwarded to Ollama as `options.num_predict`
+   * for HyDE hypothetical-document generation specifically — kept tight
+   * because the HyDE prompt template itself asks for roughly 300–600
+   * characters, and some models (observed with a "thinking"-style model)
+   * can otherwise emit thousands of characters of internal reasoning text
+   * instead of the requested short document, which then fails embedding
+   * with "input length exceeds the context length".
+   */
+  OLLAMA_HYDE_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(400),
+  /**
+   * (Runaway-generation guard.) Forwarded to Ollama as `options.num_predict`
+   * for RAG answer generation and file summarization — both are meant to
+   * be read as prose, so this is a more generous cap than the HyDE one,
+   * just enough to stop a runaway/looping generation rather than to limit
+   * ordinary answer length.
+   */
+  OLLAMA_ANSWER_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(1024),
+  /**
+   * (Reasoning-leak guard.) Forwarded to Ollama as the request's
+   * top-level `think: false` (NOT inside `options` — Ollama's `think`
+   * field sits alongside `model`/`prompt`, unlike `temperature`/
+   * `num_predict`). Some models (observed with a Granite reasoning
+   * variant; Qwen3 and others have similar modes) emit their internal
+   * "thinking" text as the actual response when called via the plain
+   * completion endpoint, instead of the requested short output — this
+   * disables that. Ignored by models/Ollama versions that don't
+   * support thinking mode. Set to false to let a model's thinking
+   * output through unsuppressed, if ever wanted.
+   */
+  OLLAMA_DISABLE_THINKING: booleanFromEnv(true),
 
   // --------------------------------------------------------------
   // Storage (not wired up to a real StorageAdapter until Phase 7)
@@ -188,6 +232,14 @@ export interface AppConfig {
     baseUrl: string;
     defaultGenerationModel: string;
     defaultEmbeddingModel: string;
+    /** See `OLLAMA_GENERATION_TEMPERATURE`'s doc comment above. */
+    generationTemperature: number;
+    /** See `OLLAMA_HYDE_MAX_OUTPUT_TOKENS`'s doc comment above. */
+    hydeMaxOutputTokens: number;
+    /** See `OLLAMA_ANSWER_MAX_OUTPUT_TOKENS`'s doc comment above. */
+    answerMaxOutputTokens: number;
+    /** See `OLLAMA_DISABLE_THINKING`'s doc comment above. */
+    disableThinking: boolean;
   };
   storage: {
     driver: RawEnv["STORAGE_DRIVER"];
@@ -239,6 +291,10 @@ export function toAppConfig(env: RawEnv): AppConfig {
       baseUrl: env.OLLAMA_BASE_URL,
       defaultGenerationModel: env.DEFAULT_GENERATION_MODEL,
       defaultEmbeddingModel: env.DEFAULT_EMBEDDING_MODEL,
+      generationTemperature: env.OLLAMA_GENERATION_TEMPERATURE,
+      hydeMaxOutputTokens: env.OLLAMA_HYDE_MAX_OUTPUT_TOKENS,
+      answerMaxOutputTokens: env.OLLAMA_ANSWER_MAX_OUTPUT_TOKENS,
+      disableThinking: env.OLLAMA_DISABLE_THINKING,
     },
     storage: {
       driver: env.STORAGE_DRIVER,

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { OllamaService } from "../ollama/ollama.service";
 import { ModelsService } from "../models/models.service";
+import { AppConfigService } from "../config/app-config.service";
 import type { SearchResultChunk } from "../search/vector-search.service";
 import type { Citation } from "./strategies/rag-strategy.interface";
 
@@ -25,6 +26,16 @@ export interface GeneratedAnswer {
  * calling the generation model at all — this guarantees the exact
  * required wording (SDD 13.5) rather than hoping the model produces it
  * verbatim, and saves an unnecessary Ollama call.
+ *
+ * Uses `.env`'s `OLLAMA_GENERATION_TEMPERATURE` (via `AppConfigService`),
+ * not Ollama's own, more open-ended default — observed with a small
+ * (~3.8B) local model: given borderline-relevant retrieved chunks, the
+ * default temperature made it inconsistently add unrequested preamble
+ * before the required fixed "no grounding" wording across otherwise-
+ * identical calls. This doesn't change *what* is grounded (retrieval
+ * itself was already correct), only how consistently the model follows
+ * the "answer only with the fixed wording when appropriate" instruction
+ * in `buildPrompt`.
  */
 @Injectable()
 export class AnswerGenerator {
@@ -33,6 +44,7 @@ export class AnswerGenerator {
   constructor(
     private readonly ollamaService: OllamaService,
     private readonly modelsService: ModelsService,
+    private readonly appConfig: AppConfigService,
   ) {}
 
   async generate(chunks: SearchResultChunk[], question: string): Promise<GeneratedAnswer> {
@@ -54,7 +66,13 @@ export class AnswerGenerator {
 
     let answer: string;
     try {
-      answer = (await this.ollamaService.generateCompletion(model, prompt)).trim();
+      answer = (
+        await this.ollamaService.generateCompletion(model, prompt, {
+          temperature: this.appConfig.config.ollama.generationTemperature,
+          maxOutputTokens: this.appConfig.config.ollama.answerMaxOutputTokens,
+          disableThinking: this.appConfig.config.ollama.disableThinking,
+        })
+      ).trim();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`Generation failed: ${message}`);

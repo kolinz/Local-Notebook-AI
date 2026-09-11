@@ -3,8 +3,22 @@ import { ENV_FILE_PATH } from "./find-env-file";
 import { envSchema, toAppConfig, type AppConfig } from "./env.schema";
 import { ConfigValidationError, formatEnvError } from "./config-error";
 
-const PLACEHOLDER_SESSION_SECRET = "change-this-to-a-long-random-string";
-const PLACEHOLDER_ADMIN_PASSWORD = "change-me-on-first-login";
+/**
+ * Exported (not just module-local) so `AdminController`'s system-info
+ * endpoint can report "is this still the placeholder?" without
+ * duplicating these two literal strings — a second copy would risk
+ * silently drifting out of sync with the actual `.env.example` values.
+ */
+export const PLACEHOLDER_SESSION_SECRET = "change-this-to-a-long-random-string";
+export const PLACEHOLDER_ADMIN_PASSWORD = "change-me-on-first-login";
+
+export function isPlaceholderSessionSecret(secret: string): boolean {
+  return secret === PLACEHOLDER_SESSION_SECRET;
+}
+
+export function isPlaceholderAdminPassword(password: string): boolean {
+  return password === PLACEHOLDER_ADMIN_PASSWORD;
+}
 
 /**
  * `validate` function passed to `ConfigModule.forRoot()`. Nest calls this
@@ -25,14 +39,14 @@ export function validateEnv(rawEnv: Record<string, unknown>): AppConfig {
 
   // Non-blocking hygiene warnings: still boot (Phase 1.5 has no
   // production deployment yet), but nudge the developer.
-  if (config.session.secret === PLACEHOLDER_SESSION_SECRET) {
+  if (isPlaceholderSessionSecret(config.session.secret)) {
     // eslint-disable-next-line no-console
     console.warn(
       "[config] WARNING: SESSION_SECRET is still set to the .env.example placeholder value. " +
         "Change it before any real deployment.",
     );
   }
-  if (config.initialAdmin.password === PLACEHOLDER_ADMIN_PASSWORD) {
+  if (isPlaceholderAdminPassword(config.initialAdmin.password)) {
     // eslint-disable-next-line no-console
     console.warn(
       "[config] WARNING: INITIAL_ADMIN_PASSWORD is still set to the .env.example placeholder value. " +

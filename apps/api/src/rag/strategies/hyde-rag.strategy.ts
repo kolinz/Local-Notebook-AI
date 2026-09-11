@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { VectorSearchService } from "../../search/vector-search.service";
 import { OllamaService } from "../../ollama/ollama.service";
 import { ModelsService } from "../../models/models.service";
+import { AppConfigService } from "../../config/app-config.service";
 import { SystemSettingsService } from "../../system-settings/system-settings.service";
 import { AnswerGenerator } from "../answer-generator.service";
 import type { RagStrategy, RagStrategyContext, RagStrategyOutcome } from "./rag-strategy.interface";
@@ -47,6 +48,16 @@ export const DEFAULT_HYDE_PROMPT_TEMPLATE = `あなたは検索クエリ拡張�
  * structurally true rather than just a prompt-level instruction: the
  * hypothetical document's text is never passed to `AnswerGenerator` at
  * all.
+ *
+ * The hypothetical-document generation call also uses `.env`'s
+ * `OLLAMA_GENERATION_TEMPERATURE` (via `AppConfigService`, same
+ * rationale as `AnswerGenerator`): with Ollama's own, more open-ended
+ * default temperature, a small local model produces a noticeably
+ * different hypothetical document across otherwise-identical
+ * questions, which in turn changes what gets embedded for retrieval
+ * and can shift which real chunks are found. Lowering the temperature
+ * here makes retrieval itself more repeatable, on top of the same fix
+ * already applied to final-answer generation.
  */
 @Injectable()
 export class HydeRagStrategy implements RagStrategy {
@@ -56,6 +67,7 @@ export class HydeRagStrategy implements RagStrategy {
     private readonly vectorSearchService: VectorSearchService,
     private readonly ollamaService: OllamaService,
     private readonly modelsService: ModelsService,
+    private readonly appConfig: AppConfigService,
     private readonly systemSettingsService: SystemSettingsService,
     private readonly answerGenerator: AnswerGenerator,
   ) {}
@@ -63,7 +75,13 @@ export class HydeRagStrategy implements RagStrategy {
   async execute(context: RagStrategyContext): Promise<RagStrategyOutcome> {
     const model = this.modelsService.resolveDefaultGenerationModel();
     const hydePrompt = this.buildHydePrompt(context.message);
-    const hydeDocument = (await this.ollamaService.generateCompletion(model, hydePrompt)).trim();
+    const hydeDocument = (
+      await this.ollamaService.generateCompletion(model, hydePrompt, {
+        temperature: this.appConfig.config.ollama.generationTemperature,
+        maxOutputTokens: this.appConfig.config.ollama.hydeMaxOutputTokens,
+        disableThinking: this.appConfig.config.ollama.disableThinking,
+      })
+    ).trim();
 
     // Embed the hypothetical document — NOT the original query. If
     // generation somehow produced empty text, fall back to embedding

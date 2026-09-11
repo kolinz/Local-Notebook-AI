@@ -22,6 +22,29 @@ export interface OllamaStatus {
   error?: string;
 }
 
+export interface GenerateCompletionOptions {
+  /** Passed through as Ollama's `options.temperature`. Callers typically source this from `AppConfigService.config.ollama.generationTemperature` (`.env`'s `OLLAMA_GENERATION_TEMPERATURE`) rather than hardcoding a value. */
+  temperature?: number;
+  /**
+   * Passed through as Ollama's `options.num_predict` (max output
+   * tokens) — a runaway-generation guard, not a length target. Without
+   * this, a model can (observed with a "thinking"-style model) emit
+   * thousands of characters of internal reasoning instead of the
+   * requested short output, which then fails downstream (e.g.
+   * embedding the result exceeds the embedding model's context
+   * length). Callers source this from `AppConfigService.config.ollama`
+   * (`OLLAMA_HYDE_MAX_OUTPUT_TOKENS` / `OLLAMA_ANSWER_MAX_OUTPUT_TOKENS`).
+   */
+  maxOutputTokens?: number;
+  /**
+   * When true, sent as the request's top-level `think: false` (NOT
+   * inside `options` — see `generateCompletion`'s implementation).
+   * Callers source this from `AppConfigService.config.ollama.disableThinking`
+   * (`.env`'s `OLLAMA_DISABLE_THINKING`).
+   */
+  disableThinking?: boolean;
+}
+
 interface RawOllamaModel {
   name: string;
   size: number;
@@ -139,15 +162,37 @@ export class OllamaService {
    * Throws if Ollama is unreachable, the model doesn't exist, or the
    * response is malformed — the caller (RagService) decides how to
    * surface that.
+   *
+   * `options.temperature` / `options.maxOutputTokens`, when passed, are
+   * forwarded as Ollama's `options.temperature` / `options.num_predict`
+   * (see `GenerateCompletionOptions`). `options.disableThinking`, when
+   * true, is forwarded as the request's own top-level `think: false`
+   * — Ollama's `think` field is a sibling of `model`/`prompt`, not
+   * nested inside `options` like the other two. When all three are
+   * omitted/false, the request body is unchanged from before these
+   * parameters were added.
    */
-  async generateCompletion(model: string, prompt: string): Promise<string> {
+  async generateCompletion(model: string, prompt: string, options?: GenerateCompletionOptions): Promise<string> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), GENERATION_TIMEOUT_MS);
+    const ollamaOptions: Record<string, number> = {};
+    if (options?.temperature !== undefined) {
+      ollamaOptions.temperature = options.temperature;
+    }
+    if (options?.maxOutputTokens !== undefined) {
+      ollamaOptions.num_predict = options.maxOutputTokens;
+    }
     try {
       const response = await fetch(`${this.baseUrl}/api/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model, prompt, stream: false }),
+        body: JSON.stringify({
+          model,
+          prompt,
+          stream: false,
+          ...(options?.disableThinking ? { think: false } : {}),
+          ...(Object.keys(ollamaOptions).length > 0 ? { options: ollamaOptions } : {}),
+        }),
         signal: controller.signal,
       });
       if (!response.ok) {
