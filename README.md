@@ -43,17 +43,13 @@ DBには意図的にPrismaを採用していません（Prisma CLIがマイグ�
 バイナリを外部CDNからダウンロードする仕様のため、社内プロキシ等の閉域網で失敗するケースが
 あったためです）。
 
-## 前提環境
+## 必要環境
 
-### **[Node.js 24 LTS](https://nodejs.org/ja/download)** 
-MacおよびLinux環境（WindowsでLinuxを動かすWSL2を含む）の場合
-```
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.7/install.sh | bash
-\. "$HOME/.nvm/nvm.sh"
-nvm install 24
-node -v
-npm -v
-```
+- **Node.js 24 LTS**（開発時の検証環境はv22でしたが、動作に影響はありません。engines警告が
+  出ることがあります）
+- **pnpm**（workspaces対応バージョン）
+- **[Ollama](https://ollama.com/)** がローカルまたはネットワーク到達可能な場所で起動していること
+- Dockerは**不要**です（後述）
 
 ## セットアップ手順
 
@@ -105,8 +101,15 @@ cp .env.example .env
 [Ollama公式サイト](https://ollama.com/)の手順に従ってインストールし、起動してください。
 その後、`.env` で指定した既定モデルを取得します。
 
+Ollamaのインストール：Linux環境（WSL2を含む） Ubuntu 24 LTSの場合
+```
+sudo apt-get install zstd
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+モデル取得
 ```bash
-ollama pull phi4-mini:3.8b
+ollama pull granite4.2:3b
 ollama pull nomic-embed-text:latest
 ```
 
