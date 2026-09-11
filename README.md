@@ -43,13 +43,17 @@ DBには意図的にPrismaを採用していません（Prisma CLIがマイグ�
 バイナリを外部CDNからダウンロードする仕様のため、社内プロキシ等の閉域網で失敗するケースが
 あったためです）。
 
-## 必要環境
+## 前提環境
 
-- **Node.js 24 LTS**（開発時の検証環境はv22でしたが、動作に影響はありません。engines警告が
-  出ることがあります）
-- **pnpm**（workspaces対応バージョン）
-- **[Ollama](https://ollama.com/)** がローカルまたはネットワーク到達可能な場所で起動していること
-- Dockerは**不要**です（後述）
+### **[Node.js 24 LTS](https://nodejs.org/ja/download)** 
+Linux環境（WindowsでLinuxを動かすWSL2を含む）の場合
+```
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.7/install.sh | bash
+\. "$HOME/.nvm/nvm.sh"
+nvm install 24
+node -v
+npm -v
+```
 
 ## セットアップ手順
 
