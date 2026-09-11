@@ -43,6 +43,13 @@ DBには意図的にPrismaを採用していません（Prisma CLIがマイグ�
 バイナリを外部CDNからダウンロードする仕様のため、社内プロキシ等の閉域網で失敗するケースが
 あったためです）。
 
+## ドキュメント
+本プロジェクトは、SDD(仕様駆動開発)を使い、必要に応じて人間や生成AIで修正など行なっています。
+ドキュメントは、[docsディレクトリ](https://github.com/kolinz/Local-Notebook-AI/tree/main/docs)にあります。
+- 仕様書：ファイル名の例 local_notebook_ai_sdd_spec_v1_6.md
+- 実装プロンプト集：ファイル名の例 local_notebook_ai_implementation_prompts_v1_6.md
+- システムプロンプト/プロジェクトプロンプト：ファイル名の例 project_prompt_v1_6.md
+
 ## 前提環境
 
 **[Node.js 24 LTS](https://nodejs.org/ja/download)** 
