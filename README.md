@@ -1,4 +1,4 @@
-# Local Notebook AI
+# Local Notebook AI 開発版
 
 自治体・大学・研究室・企業などの組織向けに構築した、**自己ホスト型・複数ユーザー対応**の
 NotebookLM風ローカルRAG（Retrieval-Augmented Generation）Webアプリケーションです。
