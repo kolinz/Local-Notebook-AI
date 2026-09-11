@@ -1,4 +1,4 @@
-# Local Notebook AI
+# Local Notebook AI 開発版
 
 自治体・大学・研究室・企業などの組織向けに構築した、**自己ホスト型・複数ユーザー対応**の
 NotebookLM風ローカルRAG（Retrieval-Augmented Generation）Webアプリケーションです。
@@ -357,7 +357,3 @@ Granite・Qwen3等の一部モデルは、回答を出す前に内部で考え�
 - ユーザー自身によるUI言語切り替え機能
 - 既存チャンクの一括再Embedding機能（Embeddingモデル切り替え時、現状は該当ファイルの
   再アップロードが必要です）
-
----
-
-質問・不具合報告は、管理者（本アプリの運用担当者）までご連絡ください。
