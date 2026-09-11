@@ -46,7 +46,7 @@ DBには意図的にPrismaを採用していません（Prisma CLIがマイグ�
 ## 前提環境
 
 ### **[Node.js 24 LTS](https://nodejs.org/ja/download)** 
-Linux環境（WindowsでLinuxを動かすWSL2を含む）の場合
+MacおよびLinux環境（WindowsでLinuxを動かすWSL2を含む）の場合
 ```
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.7/install.sh | bash
 \. "$HOME/.nvm/nvm.sh"
