@@ -45,7 +45,7 @@ DBには意図的にPrismaを採用していません（Prisma CLIがマイグ�
 
 ## 前提環境
 
--### **[Node.js 24 LTS](https://nodejs.org/ja/download)** 
+**[Node.js 24 LTS](https://nodejs.org/ja/download)** 
 
 MacおよびLinux環境（WindowsでLinuxを動かすWSL2を含む）の場合
 ```
