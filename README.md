@@ -59,10 +59,18 @@ npm -v
 ## セットアップ手順
 
 ### 1. リポジトリの取得とパッケージインストール
+リポジトリの取得
+```bash
+git clone https://github.com/kolinz/Local-Notebook-AI.git
+cd Local-Notebook-AI
+```
 
+パッケージインストール
 ```bash
 corepack enable
 pnpm install
+! Corepack is about to download https://registry.npmjs.org/pnpm/-/pnpm-9.15.0.tgz
+? Do you want to continue? [Y/n]  #Yを入力してEnterキーを押す
 ```
 
 リポジトリルートで実行してください（monorepo全体の依存関係がインストールされます）。
@@ -106,25 +114,29 @@ cp .env.example .env
 [Ollama公式サイト](https://ollama.com/)の手順に従ってインストールし、起動してください。
 その後、`.env` で指定した既定モデルを取得します。
 
-Ollamaのインストール：Linux環境（WSL2を含む） Ubuntu 24 LTSの場合
+#### Linux環境（WSL2を含む） Ubuntu 24 LTSの場合
 ```
 sudo apt-get install zstd
 curl -fsSL https://ollama.com/install.sh | sh
 ```
 
-Ollamaの起動確認
+##### Ollamaの起動確認
 ```bash
 systemctl status ollama.service
 ```
 
-Ollamaの起動と停止と再起動
+##### Ollamaの起動と停止と再起動
 ```bash
 systemctl start ollama.service   #起動
 systemctl stop ollama.service    #停止
 systemctl restart ollama.service #再起動
 ```
+#### Macの場合
+[Ollama公式サイト](https://ollama.com/)の手順に従ってインストールし、起動してください。
+「Download for MacOS」をクリックし、「Ollama.dmg」をダウンロードします。その後、Ollamaをインストールし、Ollamaを起動してください。
 
-モデル取得
+#### Ollamaにおけるモデル取得
+granite4.2:3bのような言語モデルと、nomic-embed-text:latestのようなembeddingモデルの がそれぞれ必要。
 ```bash
 ollama pull granite4.2:3b
 ollama pull nomic-embed-text:latest
@@ -134,10 +146,22 @@ ollama pull nomic-embed-text:latest
 追加は、後述の管理画面「モデル管理」から行えます。）
 
 ### 4. データベースのセットアップ
-
+#### データベースのマイグレーション
 ```bash
 pnpm db:migrate
+```
+実行結果例
+```
+[✓] migrations applied successfully!
+```
+
+#### 初期データのインストール
+```bash
 pnpm db:seed
+```
+実行結果例
+```
+[seed] Created initial admin user: admin@example.com (id: 245732b0-90b7-471f-9561-a677b1080560, locale: ja)
 ```
 
 - `db:migrate`：マイグレーションを実際のSQLiteファイルに適用します。
@@ -165,6 +189,7 @@ pnpm dev
 
 Frontend（`http://localhost:3000`）とBackend（`http://localhost:4000/api`）が
 同時に起動します。
+Webブラウザで、http://localhost:3000 にアクセス。
 
 本番相当で動かす場合：
 
@@ -172,6 +197,7 @@ Frontend（`http://localhost:3000`）とBackend（`http://localhost:4000/api`）
 pnpm build
 pnpm start
 ```
+Webブラウザで、http://localhost:3000 にアクセス。
 
 ### Docker について
 
