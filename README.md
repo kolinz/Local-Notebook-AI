@@ -112,6 +112,18 @@ sudo apt-get install zstd
 curl -fsSL https://ollama.com/install.sh | sh
 ```
 
+Ollamaの起動確認
+```bash
+systemctl status ollama.service
+```
+
+Ollamaの起動と停止と再起動
+```bash
+systemctl start ollama.service   #起動
+systemctl stop ollama.service    #停止
+systemctl restart ollama.service #再起動
+```
+
 モデル取得
 ```bash
 ollama pull granite4.2:3b
