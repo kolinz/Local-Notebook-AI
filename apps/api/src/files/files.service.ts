@@ -9,12 +9,28 @@ import { mimeTypeForKind, validateUpload } from "./file-validation";
 import { OllamaService } from "../ollama/ollama.service";
 import { ModelsService } from "../models/models.service";
 import { AppConfigService } from "../config/app-config.service";
+import { EmbeddingModelResolver } from "../embeddings/embedding-model-resolver.service";
 
 export interface UploadFileInput {
   ownerUserId: string;
   notebookId: string;
   originalFilename: string;
   buffer: Buffer;
+}
+
+/**
+ * (Phase 19: chunk viewer/editor.) A single chunk as shown to/edited by
+ * the frontend. `charCount` and `embedded` are derived here rather than
+ * sent as raw DB columns — `embeddingVectorRef`'s actual JSON content
+ * is an internal representation, never something the frontend needs or
+ * should see.
+ */
+export interface ChunkDetail {
+  id: string;
+  chunkIndex: number;
+  content: string;
+  charCount: number;
+  embedded: boolean;
 }
 
 /**
@@ -38,6 +54,7 @@ export class FilesService {
     private readonly ollamaService: OllamaService,
     private readonly modelsService: ModelsService,
     private readonly appConfig: AppConfigService,
+    private readonly embeddingModelResolver: EmbeddingModelResolver,
   ) {}
 
   private get db() {
@@ -123,6 +140,110 @@ export class FilesService {
       .where(eq(documentChunks.fileId, fileId))
       .orderBy(documentChunks.chunkIndex)
       .all();
+  }
+
+  /**
+   * (Phase 19: chunk viewer/editor.) Same underlying rows as
+   * `getChunksForFile`, but including each chunk's `id` (needed to
+   * target a single chunk for editing) and a derived `charCount` /
+   * `embedded` view instead of the raw `embeddingVectorRef` JSON blob.
+   * Ownership of the file itself is the caller's job (see OwnershipGuard
+   * on the route).
+   */
+  getChunksDetailedForFile(fileId: string): ChunkDetail[] {
+    const rows = this.db
+      .select({
+        id: documentChunks.id,
+        chunkIndex: documentChunks.chunkIndex,
+        content: documentChunks.content,
+        embeddingVectorRef: documentChunks.embeddingVectorRef,
+      })
+      .from(documentChunks)
+      .where(eq(documentChunks.fileId, fileId))
+      .orderBy(documentChunks.chunkIndex)
+      .all();
+
+    return rows.map((row) => ({
+      id: row.id,
+      chunkIndex: row.chunkIndex,
+      content: row.content,
+      charCount: row.content.length,
+      embedded: row.embeddingVectorRef !== null,
+    }));
+  }
+
+  /**
+   * (Phase 19: chunk viewer/editor.) Overwrites a single chunk's text
+   * (the primary motivating use case is fixing a pdfjs-dist extraction
+   * artifact) and immediately attempts to re-embed it with the current
+   * default embedding model, so the chunk's vector never silently
+   * drifts out of sync with its own text.
+   *
+   * The content update is unconditional — even if the subsequent
+   * re-embed attempt fails (Ollama unreachable, model missing, etc.),
+   * the edited text is kept. `embeddingVectorRef` is cleared *before*
+   * the re-embed attempt, not just left holding the stale old vector —
+   * a failed re-embed therefore leaves the chunk in an honestly
+   * "not embedded" state (`embedded: false`) rather than quietly
+   * keeping a vector that no longer matches the text. The caller can
+   * simply call this again (with the same or further-edited content)
+   * to retry; no separate "retry embedding" endpoint is needed.
+   *
+   * Returns `null` if `chunkId` doesn't exist or doesn't belong to
+   * `fileId` — the controller turns that into a 404. Ownership of the
+   * file itself is the caller's job (see OwnershipGuard on the route).
+   *
+   * Deliberately does NOT touch `files.summary_text` / the summary
+   * cache (Phase 17) — chunk edits do not implicitly invalidate or
+   * regenerate a file's cached summary.
+   */
+  async updateChunkContent(fileId: string, chunkId: string, content: string): Promise<ChunkDetail | null> {
+    const existing = this.db
+      .select({ id: documentChunks.id })
+      .from(documentChunks)
+      .where(and(eq(documentChunks.id, chunkId), eq(documentChunks.fileId, fileId)))
+      .get();
+    if (!existing) return null;
+
+    // Clear the (now-stale) embedding up front, then persist the new
+    // text — see the doc comment above for why this ordering matters.
+    this.db
+      .update(documentChunks)
+      .set({ content, embeddingVectorRef: null })
+      .where(eq(documentChunks.id, chunkId))
+      .run();
+
+    let embedded = false;
+    try {
+      const model = this.embeddingModelResolver.resolve();
+      const vector = await this.ollamaService.generateEmbedding(model, content);
+      this.db
+        .update(documentChunks)
+        .set({ embeddingVectorRef: JSON.stringify(vector) })
+        .where(eq(documentChunks.id, chunkId))
+        .run();
+      embedded = true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Re-embedding failed for chunk ${chunkId} (file ${fileId}): ${message}`);
+      // embeddingVectorRef is already null from the update above —
+      // nothing further to do here. Not rethrown: the edit itself
+      // succeeded, only the embedding refresh did not.
+    }
+
+    const row = this.db
+      .select({ chunkIndex: documentChunks.chunkIndex, content: documentChunks.content })
+      .from(documentChunks)
+      .where(eq(documentChunks.id, chunkId))
+      .get()!;
+
+    return {
+      id: chunkId,
+      chunkIndex: row.chunkIndex,
+      content: row.content,
+      charCount: row.content.length,
+      embedded,
+    };
   }
 
   /**

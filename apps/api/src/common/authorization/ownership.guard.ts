@@ -1,7 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import type { Request } from "express";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { DbService } from "../../db/db.service";
 import { files, notebooks } from "../../db/schema";
 import { AppException } from "../app-exception";
@@ -25,6 +25,23 @@ import { OWNERSHIP_KEY, type OwnedResourceType, type OwnershipOptions } from "./
  *
  * Requires `SessionAuthGuard` to have already run, so `request.user` is
  * set — apply both together: `@UseGuards(SessionAuthGuard, OwnershipGuard)`.
+ *
+ * BUGFIX (found while auditing the delete-and-reupload workflow for
+ * Phase 19 — see files.service.ts's own soft-delete doc comment for the
+ * house rule this restores): `resolveOwnerUserId` previously ignored
+ * `deleted_at` entirely for both "notebook" and "file", so a
+ * soft-deleted resource's owner was still resolved normally and the
+ * ownership check still passed. That's harmless on routes whose
+ * downstream service ALSO excludes soft-deleted rows (e.g.
+ * `FilesService.findById()` already does, so a deleted file just ends
+ * up as a 404 either way) — but on routes with no such second check
+ * (e.g. `RagController`'s chat/search path, which never re-checks a
+ * notebook's `deleted_at` once past this guard), a soft-deleted
+ * notebook remained fully usable for chat and search. Treating a
+ * soft-deleted resource as if it doesn't exist — consistently, at the
+ * guard itself, for every resource type it protects — is both simpler
+ * to reason about and matches this codebase's existing rule that a
+ * deleted file "looks gone, even to its own owner".
  */
 @Injectable()
 export class OwnershipGuard implements CanActivate {
@@ -82,13 +99,18 @@ export class OwnershipGuard implements CanActivate {
     return true;
   }
 
-  /** Returns the resource's owner_user_id, or `null` if the resource doesn't exist. */
+  /**
+   * Returns the resource's owner_user_id, or `null` if the resource
+   * doesn't exist — and, as of the bugfix above, a soft-deleted
+   * resource is treated identically to a nonexistent one here (both
+   * branches now filter on `isNull(deletedAt)`).
+   */
   private resolveOwnerUserId(resource: OwnedResourceType, id: string): string | null {
     if (resource === "notebook") {
       const row = this.dbService.db
         .select({ ownerUserId: notebooks.ownerUserId })
         .from(notebooks)
-        .where(eq(notebooks.id, id))
+        .where(and(eq(notebooks.id, id), isNull(notebooks.deletedAt)))
         .get();
       return row?.ownerUserId ?? null;
     }
@@ -97,7 +119,7 @@ export class OwnershipGuard implements CanActivate {
       const row = this.dbService.db
         .select({ ownerUserId: files.ownerUserId })
         .from(files)
-        .where(eq(files.id, id))
+        .where(and(eq(files.id, id), isNull(files.deletedAt)))
         .get();
       return row?.ownerUserId ?? null;
     }

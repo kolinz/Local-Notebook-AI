@@ -1,4 +1,4 @@
-import { Controller, Delete, Get, HttpCode, Param, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Req, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import { SessionAuthGuard } from "../auth/guards/session-auth.guard";
 import { OwnershipGuard } from "../common/authorization/ownership.guard";
@@ -15,6 +15,12 @@ import { FilesService } from "./files.service";
  * File summary feature: adds POST :id/summary here rather than a new
  * controller, since it's ownership-checked and structured identically
  * to the existing GET :id/preview route just above it.
+ *
+ * Phase 19 (chunk viewer/editor): adds GET :id/chunks and
+ * PUT :id/chunks/:chunkId, same reasoning — ownership-checked against
+ * the file id (":id"), identically to every other route here. There is
+ * no separate ownership check on ":chunkId" itself; FilesService
+ * verifies the chunk actually belongs to ":id" before allowing an edit.
  */
 @Controller("files")
 @UseGuards(SessionAuthGuard)
@@ -55,6 +61,76 @@ export class FilesController {
       throw new AppException(404, "NOT_FOUND", "File not found.");
     }
     return { file, chunks: this.filesService.getChunksForFile(id) };
+  }
+
+  /**
+   * Phase 19 (chunk viewer/editor): every chunk for this file, in
+   * order, with its id, character count, and current embedding status
+   * — backs the Sources panel's "チャンク" modal. Ownership-checked
+   * identically to the other file routes.
+   */
+  @Get(":id/chunks")
+  @UseGuards(OwnershipGuard)
+  @CheckOwnership({ resource: "file", paramName: "id" })
+  getChunks(@Param("id") id: string) {
+    const file = this.filesService.findById(id);
+    if (!file) {
+      throw new AppException(404, "NOT_FOUND", "File not found.");
+    }
+    return { chunks: this.filesService.getChunksDetailedForFile(id) };
+  }
+
+  /**
+   * Phase 19 (chunk viewer/editor): overwrites one chunk's text (the
+   * motivating use case is fixing a pdfjs-dist extraction artifact) and
+   * triggers re-embedding. Always returns 200 with the updated chunk —
+   * even when the re-embed itself failed — since the edit itself still
+   * succeeded; `chunk.embedded` tells the frontend whether the vector
+   * refresh actually went through (see FilesService.updateChunkContent).
+   * There is no separate error status for "saved but not embedded" by
+   * design: it is not a failure of this request, just an honest status
+   * to display and let the user retry (re-save) later.
+   *
+   * Ownership-checked against the file id ("id"), identically to the
+   * other file routes — a caller specifying another user's file id gets
+   * a 403 before the chunk lookup even runs.
+   */
+  @Put(":id/chunks/:chunkId")
+  @UseGuards(OwnershipGuard)
+  @CheckOwnership({ resource: "file", paramName: "id" })
+  async updateChunk(
+    @Param("id") id: string,
+    @Param("chunkId") chunkId: string,
+    @Body() body: { content?: unknown },
+    @Req() req: Request,
+  ) {
+    const file = this.filesService.findById(id);
+    if (!file) {
+      throw new AppException(404, "NOT_FOUND", "File not found.");
+    }
+
+    if (typeof body?.content !== "string" || body.content.trim().length === 0) {
+      throw new AppException(400, "BAD_REQUEST", "content must be a non-empty string.");
+    }
+
+    const chunk = await this.filesService.updateChunkContent(id, chunkId, body.content);
+    if (!chunk) {
+      throw new AppException(404, "NOT_FOUND", "Chunk not found.");
+    }
+
+    this.auditLogService.record({
+      actorUserId: req.user!.id,
+      action: "file.chunk_edited",
+      resourceType: "file",
+      resourceId: id,
+      // Chunk content itself is never logged — only enough to locate
+      // which chunk changed and whether re-embedding succeeded.
+      metadata: { chunkId, chunkIndex: chunk.chunkIndex, embedded: chunk.embedded },
+      ipAddress: req.ip,
+      userAgent: req.header("user-agent"),
+    });
+
+    return { chunk };
   }
 
   /**

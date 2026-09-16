@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { DbService } from "../db/db.service";
 import { documentChunks, files } from "../db/schema";
 import { OllamaService } from "../ollama/ollama.service";
@@ -48,6 +48,15 @@ export interface SearchResultChunk {
  * a future move to a real vector index (e.g. PostgreSQL + pgvector)
  * only needs to change this class's internals; every caller keeps
  * working unchanged.
+ *
+ * BUGFIX (found while reviewing the delete-and-reupload workflow):
+ * `files.deleted_at` was not being checked here. `FilesService.softDelete()`
+ * only marks the `files` row as deleted — it does not touch that
+ * file's `document_chunks` rows at all — so without this filter, a
+ * soft-deleted file's chunks stayed fully searchable (and would keep
+ * showing up as RAG citations) forever. `isNull(files.deletedAt)` below
+ * is the fix; it mirrors the same "exclude soft-deleted files" rule
+ * `FilesService.findById()` / `listForNotebook()` already apply.
  */
 @Injectable()
 export class VectorSearchService {
@@ -71,7 +80,10 @@ export class VectorSearchService {
     // doesn't match can never even be pulled into this process's memory.
     // Joined with `files` (Phase 11) so each result carries the
     // original filename needed for citations, without a separate
-    // per-chunk lookup.
+    // per-chunk lookup — and, as of this bugfix, so a soft-deleted
+    // file's chunks can be excluded via `files.deleted_at` (see the
+    // BUGFIX note above; this join already existed for the filename,
+    // this is just an additional column read off the same row).
     const candidates = this.dbService.db
       .select({
         id: documentChunks.id,
@@ -88,6 +100,7 @@ export class VectorSearchService {
           eq(documentChunks.ownerUserId, input.ownerUserId),
           eq(documentChunks.notebookId, input.notebookId),
           isNotNull(documentChunks.embeddingVectorRef),
+          isNull(files.deletedAt),
         ),
       )
       .all();

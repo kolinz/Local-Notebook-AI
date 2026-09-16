@@ -1396,3 +1396,108 @@ body {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* ==================================================================
+   Phase 19: chunk viewer/editor modal
+   ================================================================== */
+
+.file-chunks-modal__chunk {
+  padding: 0.75rem 0.9rem;
+  background: white;
+  border: 1px solid var(--lna-border);
+  border-radius: 0.5rem;
+}
+
+.file-chunks-modal__chunk-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.file-chunks-modal__index {
+  padding: 0.1rem 0.5rem;
+  background: #f1f5f9;
+  color: #475569;
+  border-radius: 0.3rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.file-chunks-modal__char-count {
+  color: #94a3b8;
+  font-size: 0.78rem;
+}
+
+.file-chunks-modal__status {
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.file-chunks-modal__status--ok {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.file-chunks-modal__status--pending {
+  background: #fef9c3;
+  color: #a16207;
+}
+
+.file-chunks-modal__edit-button {
+  margin-left: auto;
+  padding: 0.2rem 0.6rem;
+  border-radius: 0.35rem;
+  border: 1px solid var(--lna-border);
+  background: white;
+  cursor: pointer;
+  font-size: 0.78rem;
+}
+
+.file-chunks-modal__textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--lna-border);
+  border-radius: 0.4rem;
+  font: inherit;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.file-chunks-modal__edit-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.file-chunks-modal__edit-actions button {
+  padding: 0.35rem 0.9rem;
+  border-radius: 0.35rem;
+  border: 1px solid var(--lna-border);
+  background: white;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.file-chunks-modal__edit-actions button:last-of-type {
+  background: var(--lna-blue);
+  color: white;
+  border-color: var(--lna-blue);
+}
+
+.file-chunks-modal__edit-actions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.file-chunks-modal__save-hint {
+  color: #94a3b8;
+  font-size: 0.78rem;
+}
