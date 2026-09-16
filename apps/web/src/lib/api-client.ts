@@ -434,6 +434,42 @@ export async function getFilePreview(fileId: string): Promise<{ file: FileRecord
   return apiFetch(`/api/files/${fileId}/preview`);
 }
 
+/**
+ * (Phase 19: chunk viewer/editor.) A single chunk as shown in the
+ * "チャンク" modal — distinct from `FilePreviewChunk` above (which has
+ * no `id` and no embedding status) since editing a chunk requires
+ * targeting it by id, and the modal needs to show/react to whether the
+ * chunk's embedding is currently up to date with its text.
+ */
+export interface FileChunk {
+  id: string;
+  chunkIndex: number;
+  content: string;
+  charCount: number;
+  embedded: boolean;
+}
+
+/** Every chunk for a file, in order, with its current embedding status. */
+export async function getFileChunks(fileId: string): Promise<FileChunk[]> {
+  const data = await apiFetch<{ chunks: FileChunk[] }>(`/api/files/${fileId}/chunks`);
+  return data.chunks;
+}
+
+/**
+ * Overwrites one chunk's text and triggers re-embedding server-side.
+ * `embedded` on the returned chunk reflects whether that re-embedding
+ * actually succeeded — `false` means the text was saved but needs
+ * another save (retry) to pick up a fresh embedding; this is not
+ * surfaced as a thrown `ApiError`, since the edit itself did succeed.
+ */
+export async function updateFileChunk(fileId: string, chunkId: string, content: string): Promise<FileChunk> {
+  const data = await apiFetch<{ chunk: FileChunk }>(`/api/files/${fileId}/chunks/${chunkId}`, {
+    method: "PUT",
+    body: { content },
+  });
+  return data.chunk;
+}
+
 export interface AdminUser {
   id: string;
   email: string;

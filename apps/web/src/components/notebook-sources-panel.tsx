@@ -11,6 +11,7 @@ import {
   type FileRecord,
 } from "@/lib/api-client";
 import { FilePreviewModal } from "./file-preview-modal";
+import { FileChunksModal } from "./file-chunks-modal";
 import { EyeIcon, FileKindBadge, SparkleIcon, TrashIcon, UploadCloudIcon } from "./icons";
 
 function extensionOf(filename: string): string {
@@ -31,6 +32,11 @@ export function NotebookSourcesPanel({ notebookId }: Props) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [previewFile, setPreviewFile] = useState<FileRecord | null>(null);
+  // Phase 19: chunk viewer/editor — which file's "チャンク" modal is
+  // open, if any. Separate from `previewFile` since preview and chunks
+  // are two distinct modals a user could conceivably want in sequence
+  // for the same file.
+  const [chunksFile, setChunksFile] = useState<FileRecord | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const dragCounterRef = useRef(0);
 
@@ -215,6 +221,17 @@ export function NotebookSourcesPanel({ notebookId }: Props) {
                     <SparkleIcon className="notebook-sources__action-icon" />
                     {isGenerating ? t("summaryGenerating") : t("summaryButton")}
                   </button>
+                  {/*
+                    Phase 19: chunk viewer/editor. No dedicated icon was
+                    available in ./icons for this — reusing EyeIcon would
+                    be confusing next to the Preview button, so this is
+                    text-only for now. Add a dedicated icon to ./icons
+                    later if desired; purely cosmetic, not a functional
+                    gap.
+                  */}
+                  <button type="button" onClick={() => setChunksFile(file)}>
+                    {t("chunksButton")}
+                  </button>
                   <button type="button" onClick={() => handleDeleteFile(file.id)}>
                     <TrashIcon className="notebook-sources__action-icon" />
                   </button>
@@ -255,6 +272,14 @@ export function NotebookSourcesPanel({ notebookId }: Props) {
           fileId={previewFile.id}
           fileName={previewFile.originalFilename}
           onClose={() => setPreviewFile(null)}
+        />
+      )}
+
+      {chunksFile && (
+        <FileChunksModal
+          fileId={chunksFile.id}
+          fileName={chunksFile.originalFilename}
+          onClose={() => setChunksFile(null)}
         />
       )}
     </div>
