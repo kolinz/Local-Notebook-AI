@@ -146,9 +146,16 @@ systemctl restart ollama.service #再起動
 「Download for MacOS」をクリックし、「Ollama.dmg」をダウンロードします。その後、Ollamaをインストールし、Ollamaを起動してください。
 
 #### Ollamaにおけるモデル取得
+##### メモリが32GB以上ある場合
 granite4.2:3bのような言語モデルと、nomic-embed-text:latestのようなembeddingモデルの がそれぞれ必要。
 ```bash
 ollama pull granite4.2:3b
+ollama pull nomic-embed-text:latest
+```
+##### メモリが8GB〜16GB程度の場合
+gemma3:1bのような言語モデルと、nomic-embed-text:latestのようなembeddingモデルの がそれぞれ必要。
+```bash
+ollama pull gemma3:1b
 ollama pull nomic-embed-text:latest
 ```
 
