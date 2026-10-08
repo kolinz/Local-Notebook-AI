@@ -57,11 +57,16 @@ Macでは、ターミナルアプリを使うのが良いでしょう。Macで�
 ### Node.jsのインストール
 **[Node.js 24 LTS](https://nodejs.org/ja/download)** 
 
-Mac の場合、Command line tools for Xcode のインストールが必要なので、下記を実行します。
+Macの場合、Command line tools for Xcode のインストールが必要なので、下記を実行します。
 ```
 xcode-select --install
 ```
 ポップアップで、command line toolをダウンロードしますか。と表示されるのでインストールします。
+
+Macの場合、zshrcが未作成の場合があるので、作成した覚えがない場合は、下記を実行してください。
+```
+touch ~/.zshrc
+```
 
 MacおよびLinux環境（WindowsでLinuxを動かすWSL2を含む）におけるNode.jsのインストール
 ```
