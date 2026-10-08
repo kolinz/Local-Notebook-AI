@@ -59,7 +59,7 @@ DBには意図的にPrismaを採用していません（Prisma CLIがマイグ�
 
 MacおよびLinux環境（WindowsでLinuxを動かすWSL2を含む）の場合
 ```
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.7/install.sh | bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.8/install.sh | bash
 \. "$HOME/.nvm/nvm.sh"
 nvm install 24
 node -v
