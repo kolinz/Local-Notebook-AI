@@ -229,6 +229,11 @@ Webブラウザで、http://localhost:3000 にアクセス。
 pnpm build
 pnpm start
 ```
+#### Mac環境で、ターミナルアプリを閉じて、バックグランド実行する場合
+
+```bash
+nohup npm run start &!
+```
 
 Webブラウザで、http://localhost:3000 にアクセス。
 
