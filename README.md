@@ -53,8 +53,10 @@ DBには意図的にPrismaを採用していません（Prisma CLIがマイグ�
 - システムプロンプト/プロジェクトプロンプト
   - ファイル名の例 project_prompt_v1_6.md
 
-## 前提環境
+## 前提環境の準備（必須）
+Macでは、ターミナルアプリを使うのが良いでしょう。Macでは、Finder内の「アプリケーション」＞「ユーティリティ」＞「ターミナル」の順で起動できます。Windows環境では、WSL/WSL2を使いましょう。
 
+### Node.jsのインストール
 **[Node.js 24 LTS](https://nodejs.org/ja/download)** 
 
 MacおよびLinux環境（WindowsでLinuxを動かすWSL2を含む）の場合
@@ -66,7 +68,49 @@ node -v
 npm -v
 ```
 
+### Ollamaの準備
+
+[Ollama公式サイト](https://ollama.com/)の手順に従ってインストールし、起動してください。
+その後、`.env` で指定した既定モデルを取得します。
+
+#### Linux環境（WSL2を含む） Ubuntu 24 LTSの場合
+```
+sudo apt-get install zstd
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+##### Ollamaの起動確認
+```bash
+systemctl status ollama.service
+```
+
+##### Ollamaの起動と停止と再起動
+```bash
+systemctl start ollama.service   #起動
+systemctl stop ollama.service    #停止
+systemctl restart ollama.service #再起動
+```
+#### Macの場合
+[Ollama公式サイト](https://ollama.com/)にアクセスし、Downloadの「Download manually」をクリックをクリックし、「Ollama.dmg」をダウンロードします。その後、Ollamaをインストールし、Ollamaを起動してください。
+
+#### Ollamaにおけるモデル取得
+##### メモリが32GB以上ある場合
+granite4.2:3bのような言語モデルと、nomic-embed-text:latestのようなembeddingモデルの がそれぞれ必要。
+```bash
+ollama pull granite4.2:3b
+ollama pull nomic-embed-text:latest
+```
+##### メモリが8GB〜16GB程度の場合
+gemma3:1bのような言語モデルと、nomic-embed-text:latestのようなembeddingモデルの がそれぞれ必要。
+```bash
+ollama pull gemma3:1b
+ollama pull nomic-embed-text:latest
+```
+
+（別のモデルを使う場合は、そのモデル名で `ollama pull` してください。モデルの切り替え・
+追加は、後述の管理画面「モデル管理」から行えます。）
 ## セットアップ手順
+Macでは、ターミナルアプリを使うのが良いでしょう。Macでは、Finder内の「アプリケーション」＞「ユーティリティ」＞「ターミナル」の順で起動できます。Windows環境では、WSL/WSL2を使いましょう。起動できます。
 
 ### 1. リポジトリの取得とパッケージインストール
 リポジトリの取得
@@ -119,49 +163,7 @@ cp .env.example .env
 `SUPPORTED_LOCALES` などの非秘匿な値しか読みません。`SESSION_SECRET` や
 `DATABASE_URL`、管理者パスワードのような秘匿情報がブラウザに渡ることはありません。
 
-### 3. Ollamaの準備
-
-[Ollama公式サイト](https://ollama.com/)の手順に従ってインストールし、起動してください。
-その後、`.env` で指定した既定モデルを取得します。
-
-#### Linux環境（WSL2を含む） Ubuntu 24 LTSの場合
-```
-sudo apt-get install zstd
-curl -fsSL https://ollama.com/install.sh | sh
-```
-
-##### Ollamaの起動確認
-```bash
-systemctl status ollama.service
-```
-
-##### Ollamaの起動と停止と再起動
-```bash
-systemctl start ollama.service   #起動
-systemctl stop ollama.service    #停止
-systemctl restart ollama.service #再起動
-```
-#### Macの場合
-[Ollama公式サイト](https://ollama.com/)にアクセスし、Downloadの「Download manually」をクリックをクリックし、「Ollama.dmg」をダウンロードします。その後、Ollamaをインストールし、Ollamaを起動してください。
-
-#### Ollamaにおけるモデル取得
-##### メモリが32GB以上ある場合
-granite4.2:3bのような言語モデルと、nomic-embed-text:latestのようなembeddingモデルの がそれぞれ必要。
-```bash
-ollama pull granite4.2:3b
-ollama pull nomic-embed-text:latest
-```
-##### メモリが8GB〜16GB程度の場合
-gemma3:1bのような言語モデルと、nomic-embed-text:latestのようなembeddingモデルの がそれぞれ必要。
-```bash
-ollama pull gemma3:1b
-ollama pull nomic-embed-text:latest
-```
-
-（別のモデルを使う場合は、そのモデル名で `ollama pull` してください。モデルの切り替え・
-追加は、後述の管理画面「モデル管理」から行えます。）
-
-### 4. データベースのセットアップ
+### 3. データベースのセットアップ
 #### データベースのマイグレーション
 ```bash
 pnpm db:migrate
@@ -195,9 +197,9 @@ pnpm db:seed
 通常のセットアップ・デプロイではこのコマンドは不要です。`db:generate` は
 リポジトリルートの `package.json` には無く、`apps/api` の中でのみ実行できます。）
 
-### 5. 起動
+### 4. 起動
 
-開発モード（リポジトリルートで実行）：
+#### 開発モード（リポジトリルートで実行）：
 
 ```bash
 pnpm dev
@@ -207,7 +209,7 @@ Frontend（`http://localhost:3000`）とBackend（`http://localhost:4000/api`）
 同時に起動します。
 Webブラウザで、http://localhost:3000 にアクセス。
 
-本番相当で動かす場合：
+#### 本番相当で動かす場合：
 
 ```bash
 pnpm build
@@ -215,13 +217,23 @@ pnpm start
 ```
 Webブラウザで、http://localhost:3000 にアクセス。
 
-### Docker について
-
-**Dockerは必須ではありません。** 上記の通り `pnpm dev` / `pnpm start` だけで
-起動できるように設計されています。コンテナ化して運用したい場合は、Node.js 24環境と
-ポート3000・4000の公開、`.env` の受け渡し、`data/` と `storage/` ディレクトリの
-永続化（ボリュームマウント）を行えば、既存の構成をそのままコンテナに載せられます
-（このリポジトリ自体には現時点でDocker関連ファイルは含まれていません）。
+#### 本番相当で常時起動させる場合
+##### PM2のインストール
+```bash
+pnpm add -g pm2
+```
+##### PM2による常時起動
+```bash
+pm2 start "pnpm start" --name "localnotebook-AI"
+```
+##### PM2による一時停止
+```bash
+pm2 stop localnotebook-AI
+```
+##### PM2による常時起動の終了
+```bash
+pm2 delete localnotebook-AI
+```
 
 ## 初期管理者でのログイン
 
