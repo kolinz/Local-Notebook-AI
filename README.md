@@ -142,8 +142,7 @@ systemctl stop ollama.service    #停止
 systemctl restart ollama.service #再起動
 ```
 #### Macの場合
-[Ollama公式サイト](https://ollama.com/)の手順に従ってインストールし、起動してください。
-「Download for MacOS」をクリックし、「Ollama.dmg」をダウンロードします。その後、Ollamaをインストールし、Ollamaを起動してください。
+[Ollama公式サイト](https://ollama.com/)にアクセスし、Downloadの「Download manually」をクリックをクリックし、「Ollama.dmg」をダウンロードします。その後、Ollamaをインストールし、Ollamaを起動してください。
 
 #### Ollamaにおけるモデル取得
 ##### メモリが32GB以上ある場合
