@@ -91,7 +91,7 @@ systemctl restart ollama.service #再起動
 #### Macの場合
 [Ollama公式サイト](https://ollama.com/)にアクセスし、Downloadの「Download manually」をクリックをクリックし、「Ollama.dmg」をダウンロードします。その後、Ollamaをインストールし、Ollamaを起動してください。
 
-ネットワーク上で公開する場合は、次のコマンドも実行
+内部ネットワーク上で公開する場合は、次のコマンドも実行
 ```bash
 launchctl setenv OLLAMA_HOST "0.0.0.0:11434"
 ```
