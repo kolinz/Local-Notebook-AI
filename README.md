@@ -21,7 +21,7 @@ NotebookLM風ローカルRAG（Retrieval-Augmented Generation）Webアプリケ�
 ## 2.GeminiやChatGPTとの違い
 - 動作環境となるハードウェアや、使用する言語モデルにより、想像される性能が大きく変わります。大きめに近づくほど精度が高くなります。同時にレスポンスが遅くなります。
   - 軽量 : gemma3:1b
-  - 中程度：granite4.2:3b / granite4.2:8b / phi4-mini:3.8b / gemma4:12b
+  - 中程度：granite4.2:3b / granite4.2:8b / phi4-mini:3.8b / digitsflow/bonsai-8b / gemma4:12b
   - 大きめ：gemma4:26b / granite4.2:30b 
 - 本システムは、RAGを前提にしたAI基盤です。使用する人が自分で情報を集め、データとして登録することで、回答できる内容が大きく変わります。
   - もともとNotebookLMに近いことを想定したもののため、自分で文書データを登録しないと利用することができません。  
@@ -57,7 +57,13 @@ Macでは、ターミナルアプリを使うのが良いでしょう。Macで�
 ### Node.jsのインストール
 **[Node.js 24 LTS](https://nodejs.org/ja/download)** 
 
-MacおよびLinux環境（WindowsでLinuxを動かすWSL2を含む）の場合
+Mac の場合、Command line tools for Xcode のインストールが必要なので、下記を実行します。
+```
+xcode-select --install
+```
+ポップアップで、command line toolをダウンロードしますか。と表示されるのでインストールします。
+
+MacおよびLinux環境（WindowsでLinuxを動かすWSL2を含む）におけるNode.jsのインストール
 ```
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.8/install.sh | bash
 \. "$HOME/.nvm/nvm.sh"
