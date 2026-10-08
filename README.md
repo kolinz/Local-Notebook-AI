@@ -19,7 +19,7 @@ NotebookLM風ローカルRAG（Retrieval-Augmented Generation）Webアプリケ�
   想定して設計されています。
 
 ## 2.GeminiやChatGPTとの違い
-- 動作環境となるハードウェアや、使用する言語モデルにより、想像される性能が大きく変わります。大きめに近づくほど精度が高くなります。
+- 動作環境となるハードウェアや、使用する言語モデルにより、想像される性能が大きく変わります。大きめに近づくほど精度が高くなります。同時にレスポンスが遅くなります。
   - 軽量 : gemma3:1b
   - 中程度：granite4.2:3b / granite4.2:8b / phi4-mini:3.8b / gemma4:12b
   - 大きめ：gemma4:26b / granite4.2:30b 
