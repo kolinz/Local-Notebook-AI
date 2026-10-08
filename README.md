@@ -18,6 +18,14 @@ NotebookLM風ローカルRAG（Retrieval-Augmented Generation）Webアプリケ�
 - 個人利用のNotebookLMと異なり、**組織単位での運用・監査・利用状況の可視化**を
   想定して設計されています。
 
+## GeminiやChatGPTとの違い
+- 動作環境となるハードウェアや、使用する言語モデルにより、想像される性能が大きく変わります。大きめに近づくほど精度が高くなります。
+  - 軽量 : gemma3:1b
+  - 中程度：granite4.2:3b / granite4.2:8b / phi4-mini:3.8b / gemma4:12b
+  - 大きめ：gemma4:26b / granite4.2:30b 
+- 本システムは、RAGを前提にしたAI基盤です。使用する人が自分で情報を集め、データとして登録することで、回答できる内容が大きく変わります。
+  - もともとNotebookLMに近いことを想定したもののため、自分で文書データを登録しないと利用することができません。  
+
 ## マルチユーザー前提であることについて
 
 - 一般ユーザーは、自分が作成したノートブック・アップロードしたファイル・自分のチャット履歴・
@@ -94,8 +102,10 @@ systemctl restart ollama.service #再起動
 [Ollama公式サイト](https://ollama.com/)にアクセスし、Downloadの「Download manually」をクリックをクリックし、「Ollama.dmg」をダウンロードします。その後、Ollamaをインストールし、Ollamaを起動してください。
 
 #### Ollamaにおけるモデル取得
+「GeminiやChatGPTとの違い」をご覧ください。
+
 ##### メモリが32GB以上ある場合
-granite4.2:3bのような言語モデルと、nomic-embed-text:latestのようなembeddingモデルの がそれぞれ必要。
+granite4.2:3b以上の言語モデルと、nomic-embed-text:latestのようなembeddingモデルの がそれぞれ必要。
 ```bash
 ollama pull granite4.2:3b
 ollama pull nomic-embed-text:latest
@@ -204,6 +214,10 @@ pnpm db:seed
 ```bash
 pnpm dev
 ```
+または、
+```bash
+npm run dev
+```
 
 Frontend（`http://localhost:3000`）とBackend（`http://localhost:4000/api`）が
 同時に起動します。
@@ -215,25 +229,8 @@ Webブラウザで、http://localhost:3000 にアクセス。
 pnpm build
 pnpm start
 ```
-Webブラウザで、http://localhost:3000 にアクセス。
 
-#### 本番相当で常時起動させる場合
-##### PM2のインストール
-```bash
-pnpm add -g pm2
-```
-##### PM2による常時起動
-```bash
-pm2 start "pnpm start" --name "localnotebook-AI"
-```
-##### PM2による一時停止
-```bash
-pm2 stop localnotebook-AI
-```
-##### PM2による常時起動の終了
-```bash
-pm2 delete localnotebook-AI
-```
+Webブラウザで、http://localhost:3000 にアクセス。
 
 ## 初期管理者でのログイン
 
